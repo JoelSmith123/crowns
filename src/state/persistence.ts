@@ -13,7 +13,7 @@ export interface Settings {
 const KEY = 'crowns.settings.v1';
 
 export const DEFAULT_SETTINGS: Settings = {
-  cursorMode: 'crown',
+  cursorMode: 'block',
   autoBlock: true,
   themeName: 'bauhaus-warm',
 };

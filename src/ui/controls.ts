@@ -14,13 +14,13 @@ export interface ControlsView {
   dispose: () => void;
 }
 
-function iconButton(label: string, svg: string, cls = ''): HTMLButtonElement {
+function iconButton(ariaLabel: string, svg: string, shortLabel: string, cls = ''): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = `ctl ${cls}`.trim();
-  b.setAttribute('aria-label', label);
-  b.title = label;
-  b.innerHTML = `<span class="ctl__icon">${svg}</span>`;
+  b.setAttribute('aria-label', ariaLabel);
+  b.title = ariaLabel;
+  b.innerHTML = `<span class="ctl__icon">${svg}</span><span class="ctl__label">${shortLabel}</span>`;
   return b;
 }
 
@@ -41,13 +41,13 @@ export function createControls(store: GameStore): ControlsView {
   crownOpt.className = 'switch__opt';
   crownOpt.title = 'Crown mode — click places a crown';
   crownOpt.setAttribute('aria-label', 'Crown mode');
-  crownOpt.innerHTML = `<span class="ctl__icon">${crownSvg}</span>`;
+  crownOpt.innerHTML = `<span class="ctl__icon">${crownSvg}</span><span class="ctl__label">Crown</span>`;
   const blockOpt = document.createElement('button');
   blockOpt.type = 'button';
   blockOpt.className = 'switch__opt';
   blockOpt.title = 'Block mode — click places an X';
   blockOpt.setAttribute('aria-label', 'Block mode');
-  blockOpt.innerHTML = `<span class="ctl__icon">${xSvg}</span>`;
+  blockOpt.innerHTML = `<span class="ctl__icon">${xSvg}</span><span class="ctl__label">Block</span>`;
   modeSwitch.append(crownOpt, blockOpt);
   crownOpt.addEventListener('click', () => {
     if (store.settings.peek().cursorMode !== 'crown') store.toggleCursorMode();
@@ -81,7 +81,7 @@ export function createControls(store: GameStore): ControlsView {
   );
 
   // --- undo ---
-  const undoBtn = iconButton('Undo (⌘Z)', undoSvg);
+  const undoBtn = iconButton('Undo (⌘Z)', undoSvg, 'Undo');
   undoBtn.addEventListener('click', () => store.undo());
   disposers.push(
     effect(() => {
@@ -91,11 +91,11 @@ export function createControls(store: GameStore): ControlsView {
   );
 
   // --- hint ---
-  const hintBtn = iconButton('Hint', hintSvg);
+  const hintBtn = iconButton('Hint', hintSvg, 'Hint');
   hintBtn.addEventListener('click', () => store.showHint());
 
   // --- row/column feature ---
-  const featureBtn = iconButton('Block a row/column for a region', featureSvg, 'ctl--feature');
+  const featureBtn = iconButton('Block the rest of a row/column for a line-confined region', featureSvg, 'Line', 'ctl--feature');
   featureBtn.addEventListener('click', () => store.toggleRowColArm());
   disposers.push(
     effect(() => {
