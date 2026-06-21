@@ -4,6 +4,7 @@ import { neighbors4, isAdjacent8 } from './grid';
 import { randomSolution, growRegions, passesQualityGates } from './generator';
 import { countSolutions, firstSolution, countSolutionsBrute } from './solver';
 import { generateUniquePuzzle } from './uniqueness';
+import { planEasier, lineRegionThreshold, countOneLineRegions } from './easier';
 import { assignRegionColors } from './palette';
 import { computeHint } from './hint';
 import { computeAutoX, computeConflicts, isSolved, rowColPlan } from './autoblock';
@@ -294,4 +295,120 @@ describe('assignRegionColors', () => {
       expect(new Set(colors).size).toBe(n);
     }
   }, 30_000);
+});
+
+// ---- easier mode ----------------------------------------------------------
+
+/**
+ * Independent (test-side) one-line region count: a region is "one-line" iff all
+ * its cells share a single row OR a single column. Deliberately NOT the
+ * production `countOneLineRegions`, so it is ground truth for the guarantee.
+ */
+function oneLineCountIndependent(regionOf: ArrayLike<number>, n: number): number {
+  const cellsByRegion: number[][] = Array.from({ length: n }, () => []);
+  for (let i = 0; i < regionOf.length; i++) cellsByRegion[regionOf[i]].push(i);
+  let count = 0;
+  for (let g = 0; g < n; g++) {
+    const cells = cellsByRegion[g];
+    if (cells.length === 0) continue;
+    const rows = new Set(cells.map((i) => (i / n) | 0));
+    const cols = new Set(cells.map((i) => i % n));
+    if (rows.size === 1 || cols.size === 1) count++;
+  }
+  return count;
+}
+
+describe('easier mode', () => {
+  it('lineRegionThreshold matches the size bands (10 sits in the stricter band)', () => {
+    expect([8, 9].map(lineRegionThreshold)).toEqual([2, 2]);
+    expect([10, 11, 12].map(lineRegionThreshold)).toEqual([3, 3, 3]);
+    expect([13, 14, 15].map(lineRegionThreshold)).toEqual([4, 4, 4]);
+  });
+
+  it('planEasier picks threshold(n) line-regions with distinct, on-line, in-bounds preclaims', () => {
+    for (let n = 8; n <= 15; n++) {
+      for (let s = 0; s < 30; s++) {
+        const rng = mulberry32(n * 101 + s);
+        const sol = randomSolution(n, rng)!;
+        const plan = planEasier(n, sol, rng);
+        expect(plan.lineRegions.length).toBe(lineRegionThreshold(n));
+
+        const seenCells = new Set<number>();
+        const seenRegions = new Set<number>();
+        for (const spec of plan.lineRegions) {
+          expect(seenRegions.has(spec.region)).toBe(false); // distinct regions
+          seenRegions.add(spec.region);
+          expect(seenCells.has(spec.preclaim)).toBe(false); // distinct preclaims (row×col crossing guard)
+          seenCells.add(spec.preclaim);
+          expect(spec.preclaim).toBeGreaterThanOrEqual(0);
+          expect(spec.preclaim).toBeLessThan(n * n);
+          // preclaim lies on the region's confined line; seed shares that line
+          if (spec.axis === 'row') {
+            expect((spec.preclaim / n) | 0).toBe(spec.line);
+            expect(spec.line).toBe(spec.region); // region r is seeded in row r
+          } else {
+            expect(spec.preclaim % n).toBe(spec.line);
+            expect(sol[spec.region]).toBe(spec.line); // seed column
+          }
+          // mirror lookup arrays agree with the spec
+          expect(plan.isLineRegion[spec.region]).toBe(1);
+          expect(plan.lineAxisOf[spec.region]).toBe(spec.axis === 'row' ? 0 : 1);
+          expect(plan.lineIndexOf[spec.region]).toBe(spec.line);
+        }
+      }
+    }
+  });
+
+  it('growRegions(plan) partitions the board, every region >= 2, planned regions truly one-line', () => {
+    for (let n = 8; n <= 15; n++) {
+      for (let s = 0; s < 12; s++) {
+        const rng = mulberry32(n * 53 + s);
+        const sol = randomSolution(n, rng)!;
+        const plan = planEasier(n, sol, rng);
+        const regionOf = growRegions(n, sol, rng, plan);
+
+        for (let i = 0; i < n * n; i++) {
+          expect(regionOf[i]).toBeGreaterThanOrEqual(0);
+          expect(regionOf[i]).toBeLessThan(n);
+        }
+        const sizes = regionSizes(regionOf, n);
+        expect(sizes.reduce((a, b) => a + b, 0)).toBe(n * n);
+        for (let g = 0; g < n; g++) {
+          expect(sizes[g]).toBeGreaterThanOrEqual(2); // pre-claim guarantee
+          expect(regionContiguous(regionOf, n, g, sizes[g])).toBe(true);
+        }
+        // each planned line-region is confined to its line
+        for (const spec of plan.lineRegions) {
+          for (let i = 0; i < n * n; i++) {
+            if (regionOf[i] !== spec.region) continue;
+            if (spec.axis === 'row') expect((i / n) | 0).toBe(spec.line);
+            else expect(i % n).toBe(spec.line);
+          }
+        }
+        expect(oneLineCountIndependent(regionOf, n)).toBeGreaterThanOrEqual(lineRegionThreshold(n));
+      }
+    }
+  });
+
+  it('generateUniquePuzzle(easier) is uniquely solvable AND meets the one-line guarantee for N=8..15', () => {
+    for (let n = 8; n <= 15; n++) {
+      const puz = generateUniquePuzzle(mulberry32(n * 7 + 1), 1, { fixedN: n, easier: true });
+      expect(puz.n).toBe(n);
+      expect(isValidSolution(puz.solution, n)).toBe(true);
+      expect(passesQualityGates(puz.regionOf, n)).toBe(true);
+      // unique solution (brute, no early exit) and it is the embedded solution
+      expect(countSolutions(n, puz.regionOf, 999)).toBe(1);
+      expect(firstSolution(n, puz.regionOf)).toEqual(puz.solution);
+      // the easier-mode guarantee, by ground-truth count, survives carving
+      expect(oneLineCountIndependent(puz.regionOf, n)).toBeGreaterThanOrEqual(lineRegionThreshold(n));
+      // production counter agrees with ground truth
+      expect(countOneLineRegions(puz.regionOf, n)).toBe(oneLineCountIndependent(puz.regionOf, n));
+    }
+  }, 40_000);
+
+  it('is deterministic for a given seed + id in easier mode', () => {
+    const a = generateUniquePuzzle(mulberry32(42), 5, { easier: true });
+    const b = generateUniquePuzzle(mulberry32(42), 5, { easier: true });
+    expect(a).toEqual(b);
+  }, 20_000);
 });

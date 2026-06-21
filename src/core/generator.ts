@@ -9,8 +9,22 @@ import type { Rng } from './rng';
 import { range, shuffle } from './rng';
 import { neighbors4 } from './grid';
 import { runSearch } from './solver';
+import type { EasierPlan } from './easier';
 
 const UNASSIGNED = 255;
+
+/**
+ * Whether region `g` may grow into `cell`. Always true outside easier mode and
+ * for non-line regions; a line-region may only grow along its confined line, so
+ * its cells stay on a single row/column (one-line by construction).
+ */
+function axisAllows(plan: EasierPlan | undefined, g: number, cell: number, n: number): boolean {
+  if (!plan) return true;
+  const ax = plan.lineAxisOf[g];
+  if (ax < 0) return true; // not a line-region
+  if (ax === 0) return ((cell / n) | 0) === plan.lineIndexOf[g]; // row-confined
+  return cell % n === plan.lineIndexOf[g]; // col-confined
+}
 
 /**
  * A random non-attacking crown placement: a permutation p of columns with
@@ -46,8 +60,13 @@ export function randomSolution(n: number, rng: Rng): number[] | null {
  * - Compactness bias (prefer frontier cells with more same-region neighbors)
  *   yields rounder shapes with fewer tendrils.
  * Contiguity and one-seed-per-region are invariants by construction.
+ *
+ * In easier mode (`plan` given) the chosen line-regions grow only along their
+ * confined line (axis-restricted frontiers), and a pre-claim pass guarantees
+ * every region reaches size >= 2 — so the one-line guarantee and the size gate
+ * hold by construction, with no extra growth attempts.
  */
-export function growRegions(n: number, solution: number[], rng: Rng): Uint8Array {
+export function growRegions(n: number, solution: number[], rng: Rng, plan?: EasierPlan): Uint8Array {
   const total = n * n;
   const regionOf = new Uint8Array(total).fill(UNASSIGNED);
   const size = new Int32Array(n);
@@ -58,12 +77,45 @@ export function growRegions(n: number, solution: number[], rng: Rng): Uint8Array
     regionOf[seed] = r;
     size[r] = 1;
     for (const nb of neighbors4(seed, n)) {
-      if (regionOf[nb] === UNASSIGNED) frontiers[r].add(nb);
+      if (regionOf[nb] === UNASSIGNED && axisAllows(plan, r, nb, n)) frontiers[r].add(nb);
     }
   }
 
-  const ALPHA = 1.6; // higher → stronger pull toward equal sizes
   let remaining = total - n;
+
+  // Easier mode: pre-claim a second cell for every region so each is size >= 2
+  // by construction (line-regions take their on-line `preclaim`; blobs take any
+  // free neighbor). No rejection sampling — the size gate never fails on this.
+  if (plan) {
+    for (const spec of plan.lineRegions) {
+      const cell = spec.preclaim;
+      if (regionOf[cell] !== UNASSIGNED) continue; // preclaims are distinct non-seeds; safety only
+      regionOf[cell] = spec.region;
+      size[spec.region]++;
+      remaining--;
+      frontiers[spec.region].delete(cell);
+      for (const nb of neighbors4(cell, n)) {
+        if (regionOf[nb] === UNASSIGNED && axisAllows(plan, spec.region, nb, n)) frontiers[spec.region].add(nb);
+      }
+    }
+    for (let r = 0; r < n; r++) {
+      if (size[r] >= 2) continue; // line-regions already pre-claimed above
+      const seed = r * n + solution[r];
+      for (const nb of neighbors4(seed, n)) {
+        if (regionOf[nb] !== UNASSIGNED || !axisAllows(plan, r, nb, n)) continue;
+        regionOf[nb] = r;
+        size[r]++;
+        remaining--;
+        frontiers[r].delete(nb);
+        for (const nb2 of neighbors4(nb, n)) {
+          if (regionOf[nb2] === UNASSIGNED && axisAllows(plan, r, nb2, n)) frontiers[r].add(nb2);
+        }
+        break;
+      }
+    }
+  }
+
+  const alpha = plan ? plan.alpha : 1.6; // higher → stronger pull toward equal sizes
 
   while (remaining > 0) {
     // Pick a region to grow, weighted toward smaller ones.
@@ -72,7 +124,8 @@ export function growRegions(n: number, solution: number[], rng: Rng): Uint8Array
     let wsum = 0;
     for (let g = 0; g < n; g++) {
       if (frontiers[g].size === 0) continue;
-      const w = 1 / Math.pow(size[g], ALPHA);
+      if (plan && plan.isLineRegion[g]) continue; // line-regions stay frozen at their pre-claimed segment
+      const w = 1 / Math.pow(size[g], alpha);
       cands.push(g);
       weights.push(w);
       wsum += w;
@@ -116,7 +169,39 @@ export function growRegions(n: number, solution: number[], rng: Rng): Uint8Array
     remaining--;
     frontiers[chosen].delete(cell);
     for (const nb of neighbors4(cell, n)) {
-      if (regionOf[nb] === UNASSIGNED) frontiers[chosen].add(nb);
+      if (regionOf[nb] === UNASSIGNED && axisAllows(plan, chosen, nb, n)) frontiers[chosen].add(nb);
+    }
+  }
+
+  // Easier mode only: a line-region grows along its line, so a thin strip can
+  // occasionally wall off a pocket the blob frontiers never reach. Mop up any
+  // such leftover cells into a neighbor — PREFER a non-line (blob) region so the
+  // line-regions stay one-line; the one-line gate in uniqueness.ts catches the
+  // (rare) case a cell is fully ringed by line cells and regrows. Iterates so a
+  // pocket fills inward once its rim is assigned; terminates (board is connected).
+  if (plan) {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let i = 0; i < total; i++) {
+        if (regionOf[i] !== UNASSIGNED) continue;
+        let blob = -1;
+        let any = -1;
+        for (const nb of neighbors4(i, n)) {
+          const g = regionOf[nb];
+          if (g === UNASSIGNED) continue;
+          if (!plan.isLineRegion[g]) {
+            blob = g;
+            break;
+          }
+          if (any === -1) any = g;
+        }
+        const g = blob !== -1 ? blob : any;
+        if (g !== -1) {
+          regionOf[i] = g;
+          changed = true;
+        }
+      }
     }
   }
 
@@ -152,8 +237,16 @@ function regionStaysHealthyWithout(regionOf: Uint8Array, n: number, cell: number
   return seen.size === count;
 }
 
-/** Try to invalidate alternate solution q by moving one of its crowns. */
-function tryCarveAlternate(n: number, regionOf: Uint8Array, p: number[], q: number[], rng: Rng): boolean {
+/**
+ * Try to invalidate alternate solution q by moving one of its crowns.
+ *
+ * Easier mode: a cell may be moved OUT of a line-region (removal keeps the region
+ * on its row/column, so it stays one-line; contiguity/size are guarded below),
+ * but never INTO a line-region (that would add an off-line cell). So line-regions
+ * are excluded as move targets only — this is what lets carve still eliminate an
+ * alternate that merely shifts a line-region's crown within its own line.
+ */
+function tryCarveAlternate(n: number, regionOf: Uint8Array, p: number[], q: number[], rng: Rng, plan?: EasierPlan): boolean {
   const diffRows: number[] = [];
   for (let r = 0; r < n; r++) if (q[r] !== p[r]) diffRows.push(r);
   shuffle(diffRows, rng);
@@ -163,9 +256,11 @@ function tryCarveAlternate(n: number, regionOf: Uint8Array, p: number[], q: numb
     const targets: number[] = [];
     for (const nb of neighbors4(a, n)) {
       const gB = regionOf[nb];
-      if (gB !== gA && !targets.includes(gB)) targets.push(gB);
+      if (gB === gA) continue;
+      if (plan && plan.isLineRegion[gB]) continue; // never move a cell INTO a line-region
+      if (!targets.includes(gB)) targets.push(gB);
     }
-    if (targets.length === 0) continue; // a is internal to its region
+    if (targets.length === 0) continue; // a is internal to its region (or only borders line-regions)
     if (!regionStaysHealthyWithout(regionOf, n, a)) continue;
     regionOf[a] = targets[Math.floor(rng() * targets.length)];
     return true;
@@ -178,7 +273,7 @@ function tryCarveAlternate(n: number, regionOf: Uint8Array, p: number[], q: numb
  * cell, so the intended solution stays valid). Used to escape a carve stall
  * without discarding progress. Returns true if a cell was moved.
  */
-function perturbCell(regionOf: Uint8Array, n: number, pCrowns: Set<number>, rng: Rng): boolean {
+function perturbCell(regionOf: Uint8Array, n: number, pCrowns: Set<number>, rng: Rng, plan?: EasierPlan): boolean {
   const total = n * n;
   const start = Math.floor(rng() * total);
   for (let off = 0; off < total; off++) {
@@ -188,7 +283,9 @@ function perturbCell(regionOf: Uint8Array, n: number, pCrowns: Set<number>, rng:
     const targets: number[] = [];
     for (const nb of neighbors4(c, n)) {
       const gB = regionOf[nb];
-      if (gB !== gC && !targets.includes(gB)) targets.push(gB);
+      if (gB === gC) continue;
+      if (plan && plan.isLineRegion[gB]) continue; // never move a cell INTO a line-region
+      if (!targets.includes(gB)) targets.push(gB);
     }
     if (targets.length === 0) continue;
     if (!regionStaysHealthyWithout(regionOf, n, c)) continue;
@@ -205,6 +302,7 @@ export function carveToUnique(
   regionOf: Uint8Array,
   p: number[],
   rng: Rng,
+  plan?: EasierPlan,
   maxRepairs = 400,
   solveBudget = 12000,
 ): boolean {
@@ -236,7 +334,7 @@ export function carveToUnique(
 
       let moved = false;
       for (const q of alts) {
-        if (tryCarveAlternate(n, regionOf, p, q, rng)) {
+        if (tryCarveAlternate(n, regionOf, p, q, rng, plan)) {
           moved = true;
           break;
         }
@@ -246,7 +344,7 @@ export function carveToUnique(
 
     if (needPerturb) {
       let perturbed = false;
-      for (let k = 0; k < 4; k++) if (perturbCell(regionOf, n, pCrowns, rng)) perturbed = true;
+      for (let k = 0; k < 4; k++) if (perturbCell(regionOf, n, pCrowns, rng, plan)) perturbed = true;
       if (!perturbed) return false; // truly stuck — regrow
     }
   }
@@ -257,14 +355,17 @@ export function carveToUnique(
  * Reject degenerate region maps: any unassigned cell, a 1-cell region, or a
  * region far larger than average. Cheap; uniqueness.ts simply regrows on fail.
  */
-export function passesQualityGates(regionOf: ArrayLike<number>, n: number): boolean {
+export function passesQualityGates(
+  regionOf: ArrayLike<number>,
+  n: number,
+  maxCap = Math.floor(n * 2.2) + 1, // average region size is n
+): boolean {
   const size = new Int32Array(n);
   for (let i = 0; i < regionOf.length; i++) {
     const g = regionOf[i];
     if (g === UNASSIGNED) return false;
     size[g]++;
   }
-  const maxCap = Math.floor(n * 2.2) + 1; // average region size is n
   for (let g = 0; g < n; g++) {
     if (size[g] < 2) return false;
     if (size[g] > maxCap) return false;
