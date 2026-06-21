@@ -53,11 +53,12 @@ MCP (`launch.json` defines `crowns-dev`), not `sim-screenshot`.
 - Worker file types `self` via a minimal cast to avoid DOM-vs-WebWorker lib clash.
 
 ## Compact Instructions
-Preserve: current branch `feat/crowns-initial-build`; all 10 milestones (M0-M9)
-complete and committed; 20 Vitest tests passing; app verified in-browser. If
-work resumes, remaining options are: push + open PR (needs a remote), and any
-new feature requests. Don't re-tune generation perf without reading the
-`crowns-puzzle-generation` memory first.
+Preserve: branch `feat/crowns-initial-build`; remote `origin` =
+github.com/JoelSmith123/crowns (public); PR #1 open (base `main` = M0 scaffold).
+All 10 milestones (M0-M9) complete; 20 Vitest tests passing; app verified
+in-browser. Deploy: user connects Cloudflare Pages themselves (build
+`npm run build`, output `dist/`). Don't re-tune generation perf without reading
+the `crowns-puzzle-generation` memory first.
 
 ## Git and Version Control
 
