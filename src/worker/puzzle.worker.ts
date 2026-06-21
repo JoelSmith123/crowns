@@ -9,6 +9,7 @@
  */
 import type { Req, Res } from './protocol';
 import { generateUniquePuzzle } from '../core/uniqueness';
+import { computeHint } from '../core/hint';
 import { mulberry32, randomSeed } from '../core/rng';
 import type { Rng } from '../core/rng';
 
@@ -45,8 +46,18 @@ function handle(req: Req): void {
       break;
     }
     case 'COMPUTE_HINT': {
-      // Real deduction ladder arrives in M7; until then there is no hint.
-      ctx.postMessage({ type: 'HINT', reqId: req.reqId, puzzleId: req.puzzleId, hint: null });
+      const puz = puzzles.get(req.puzzleId);
+      const hint = puz
+        ? computeHint(
+            puz.n,
+            puz.regionOf,
+            puz.solution,
+            new Set(req.crowns),
+            new Set(req.manualX),
+            req.autoBlock,
+          )
+        : null;
+      ctx.postMessage({ type: 'HINT', reqId: req.reqId, puzzleId: req.puzzleId, hint });
       break;
     }
   }

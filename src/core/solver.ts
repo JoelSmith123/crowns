@@ -213,57 +213,6 @@ export function firstSolution(n: number, regionOf: ArrayLike<number>): number[] 
   return sols.length ? sols[0] : null;
 }
 
-/** True iff the puzzle has exactly one solution. */
-export function isUnique(n: number, regionOf: ArrayLike<number>): boolean {
-  return countSolutions(n, regionOf, 2) === 1;
-}
-
-/**
- * Find one solution that differs from `p`, or null if `p` is the only solution.
- * Used by carving to discover an alternate solution to eliminate.
- */
-export function findAlternateSolution(
-  n: number,
-  regionOf: ArrayLike<number>,
-  p: number[],
-): number[] | null {
-  const sols = enumerate(n, regionOf, 2);
-  for (const s of sols) {
-    for (let r = 0; r < n; r++) {
-      if (s[r] !== p[r]) return s;
-    }
-  }
-  return null;
-}
-
-export interface AlternateResult {
-  /** An alternate solution to eliminate, or null if none within budget. */
-  q: number[] | null;
-  /** True if the search blew the budget (puzzle too hard to verify cheaply). */
-  aborted: boolean;
-}
-
-/**
- * Budgeted version for carving: finds an alternate solution, or reports aborted
- * if confirming would cost more than `budget` nodes. The generator treats an
- * abort as "this puzzle is too hard to verify" and regrows.
- */
-export function findAlternateBudgeted(
-  n: number,
-  regionOf: ArrayLike<number>,
-  p: number[],
-  budget: number,
-): AlternateResult {
-  const { results, aborted } = runSearch(n, regionOf, 2, budget);
-  if (aborted) return { q: null, aborted: true };
-  for (const s of results) {
-    for (let r = 0; r < n; r++) {
-      if (s[r] !== p[r]) return { q: s, aborted: false };
-    }
-  }
-  return { q: null, aborted: false };
-}
-
 /**
  * Independent reference solver (fixed row order, no propagation). Slower but
  * obviously correct; used in tests to cross-check enumerate().

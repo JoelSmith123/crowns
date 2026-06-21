@@ -152,14 +152,6 @@ function regionStaysHealthyWithout(regionOf: Uint8Array, n: number, cell: number
   return seen.size === count;
 }
 
-/**
- * Carve the region map until the puzzle has a unique solution, mutating
- * `regionOf` in place. Strategy: while an alternate solution q exists, pick a
- * row where q differs from the intended solution p, and move that q-crown cell
- * into an adjacent region. This removes q's crown from its region (invalidating
- * q) while leaving every p-crown in place (p stays valid) and keeping regions
- * contiguous. Returns true on success, false if it stalls (caller regrows).
- */
 /** Try to invalidate alternate solution q by moving one of its crowns. */
 function tryCarveAlternate(n: number, regionOf: Uint8Array, p: number[], q: number[], rng: Rng): boolean {
   const diffRows: number[] = [];
