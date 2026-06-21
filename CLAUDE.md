@@ -24,12 +24,17 @@ Add a `## Compact Instructions` section to this file once the project is large e
 
 ## Project: Crowns (LinkedIn "Queens" clone)
 
-Vanilla TS + Vite, zero runtime deps. Fully client-side, deploys static to
-Cloudflare Pages. See `README.md` for play/deploy details.
+Vanilla TS + Vite, zero runtime deps. Fully client-side, auto-deploys to
+Cloudflare Pages (live at crowns-1dw.pages.dev).
 
-**Commands:** `npm run dev` · `npm run test` (Vitest) · `npm run build` (tsc +
-vite) · `npm run preview`. To screenshot the running app, use the Claude Preview
-MCP (`launch.json` defines `crowns-dev`), not `sim-screenshot`.
+**Docs:** `README.md` (play/dev/deploy) · `docs/architecture.md` (deep dive:
+module map, generation pipeline, data flow, gotchas) — read it before non-trivial
+changes. Generation internals also in the `crowns-puzzle-generation` memory.
+
+**Commands:** `npm run dev` · `npm run test` (Vitest) · `npm run typecheck` ·
+`npm run build` (tsc + vite) · `npm run preview`. To screenshot/verify the running
+app, use the Claude Preview MCP (`.claude/launch.json` defines `crowns-dev` and
+`crowns-preview`), not `sim-screenshot`.
 
 **Architecture (layering — enforce it):**
 - `src/core/` — pure, worker-safe, unit-tested engine. Imports nothing from
@@ -44,21 +49,29 @@ MCP (`launch.json` defines `crowns-dev`), not `sim-screenshot`.
 - `src/ui/` — DOM board (CSS Grid) + controls; minimal reactive patching.
 
 **Gotchas / conventions:**
-- Generation is the hard part — see the `crowns-puzzle-generation` memory.
-  Random regions are ~never unique; we carve + propagate + perturb. Don't
-  "simplify" the solver/carve without re-checking uniqueness AND attempt counts.
-- Node timing measurements on this machine are inflated ~3-4× by the Claude app's
-  CPU use; trust load-independent metrics (attempt counts) over wall-clock ms.
+- Generation is the hard part — random regions are ~never unique; we carve +
+  propagate + perturb (`generator.ts`/`solver.ts`). Don't "simplify" the
+  solver/carve without re-checking uniqueness AND attempt counts.
+- Node timing on this machine is inflated ~3-4× by the Claude app's CPU use;
+  trust load-independent metrics (attempt counts) over wall-clock ms.
+- Input: single vs double click uses the native `event.detail` count so single
+  clicks are instant; double-click does the OPPOSITE of the cursor mode. Do NOT
+  reintroduce a click-delay/timer (that was the lag bug).
+- Hint PLACES the next correct crown (with auto-block) + flashes it; it does not
+  just highlight. Auto-block is a DERIVED overlay, so undo only records
+  crowns/manualX.
 - `tsconfig` uses `verbatimModuleSyntax` — use `import type` for type-only imports.
 - Worker file types `self` via a minimal cast to avoid DOM-vs-WebWorker lib clash.
 
 ## Compact Instructions
-Preserve: branch `feat/crowns-initial-build`; remote `origin` =
-github.com/JoelSmith123/crowns (public); PR #1 open (base `main` = M0 scaffold).
-All 10 milestones (M0-M9) complete; 20 Vitest tests passing; app verified
-in-browser. Deploy: user connects Cloudflare Pages themselves (build
-`npm run build`, output `dist/`). Don't re-tune generation perf without reading
-the `crowns-puzzle-generation` memory first.
+Preserve: remote `origin` = github.com/JoelSmith123/crowns (public); **`main` is
+the production branch and Cloudflare Pages auto-deploys every push to it** — so
+ship via branch → PR → merge to `main` (never commit straight to `main`). The
+game is complete and live (crowns-1dw.pages.dev); 20 Vitest tests pass; verify
+UI changes in-browser (Preview MCP) before merging, and confirm a deploy by
+matching the deployed `assets/index-*.js` hash to local `dist/`. Don't re-tune
+generation perf without reading `docs/architecture.md` + the
+`crowns-puzzle-generation` memory; don't reintroduce a click-delay timer.
 
 ## Git and Version Control
 

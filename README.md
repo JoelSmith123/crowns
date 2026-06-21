@@ -6,57 +6,73 @@ diagonally. Every puzzle is randomized and guaranteed to have a unique,
 deduction-solvable answer.
 
 Swiss-grid / Bauhaus look, no backend, no accounts, no tracking.
+Live: https://crowns-1dw.pages.dev
 
 ## Play
 
-- **Crown / Block mode** — toggle the cursor switch. In crown mode a click places
-  a crown; in block mode a click places an X. **Double-click always crowns.**
-  Right-click toggles a block in either mode.
-- **Auto-block** (on by default) — placing a crown auto-X's its row, column,
-  region, and neighbors. Toggle it off in the controls.
-- **Undo** — the undo button or `Cmd/Ctrl+Z`. Undoes a move and its auto-blocks
+- **Cursor mode (Crown / Block switch).** A single click does the current mode's
+  action; a **double-click does the other one**:
+  - **Block mode** (the default): single-click places an X, double-click crowns.
+  - **Crown mode**: single-click crowns, double-click places an X.
+  - Right-click always toggles a block.
+- **Auto-block** (on by default) — placing a crown auto-X's its whole row,
+  column, region, and 8 neighbors. Toggle it off in the controls.
+- **Undo** — the undo button or `Cmd/Ctrl+Z`. Reverts a move *and* its auto-blocks
   as one step.
-- **Hint** (`H`) — highlights the next logical deduction, preloaded for zero delay.
-- **Row/Column feature** — when a region's open cells all lie on one line, its
-  side button gently glows; click it, then click that region to block the rest of
-  the line.
+- **Hint** — places the next correct crown (with auto-block) and briefly flashes
+  it. Press repeatedly to walk through a solve. Preloaded, so it's instant.
+- **Block line** (the row/column feature) — when a region's still-open cells all
+  lie on one row or column, this side button gently glows. Click it to arm, then
+  click a tile of that region to block the rest of that line. While armed, the
+  region's open cells on the line are outlined to show what's about to happen.
 - **New Puzzle** — generates a fresh puzzle (random size 8–15); confirms first if
-  one is in progress. The next puzzle is preloaded so it's instant.
+  one is in progress. The next puzzle is preloaded, so it's instant.
 
-Keyboard: `H` hint, `B` toggle cursor mode, `A` toggle auto-block, `Cmd/Ctrl+Z` undo.
+Keyboard: arrow keys move focus on the board; `Space`/`Enter` does the cursor
+mode's action on the focused cell; `X` blocks it, `C` crowns it; `H` hint,
+`B` switch cursor mode, `A` toggle auto-block, `Cmd/Ctrl+Z` undo.
 
 ## Develop
 
 ```bash
 npm install
 npm run dev        # Vite dev server
-npm run test       # Vitest (engine correctness + perf)
+npm run test       # Vitest (engine correctness + generation perf)
+npm run typecheck  # tsc --noEmit
 npm run build      # typecheck + production build to dist/
-npm run preview    # serve the production build
+npm run preview    # serve the production build (static, like Cloudflare)
 ```
 
 Stack: Vanilla TypeScript + Vite, zero runtime dependencies. All puzzle
 generation, solving, and hint computation run in a Web Worker; the bundle is
-~9 KB gzipped.
+tiny (~11 KB gzipped).
+
+To screenshot/verify the running app, use the Claude Preview MCP — `.claude/launch.json`
+defines `crowns-dev` (dev server) and `crowns-preview` (production build).
 
 ## Deploy (Cloudflare Pages)
 
-The build is a static site in `dist/` with a relative base path, so it works at
-any path. Two options:
+`main` is the production branch: Cloudflare Pages is connected to this repo and
+**auto-deploys every push to `main`** (build `npm run build`, output `dist/`). So
+the deploy flow is: branch → PR → merge to `main` → it goes live in ~1 minute.
 
-- **Direct upload:** `npm run build && npx wrangler pages deploy dist`
-- **Git integration:** connect the repo in the Cloudflare dashboard with build
-  command `npm run build` and output directory `dist`.
+The build is a static site with a relative base path, so it also works via direct
+upload: `npm run build && npx wrangler pages deploy dist`.
 
 ## Architecture
 
-- `src/core/` — pure, worker-safe, unit-tested engine (generator, propagation
-  solver, carving to uniqueness, hint ladder, region coloring).
-- `src/worker/` — the Web Worker and its typed message protocol; it owns the RNG
-  and solutions (the answer is never sent to the main thread).
-- `src/state/` — a tiny custom signal store; explicit crowns/blocks with derived
-  auto-block/marks/conflicts overlays and transaction-based undo.
-- `src/theme/` — every style value as one theme object flattened to CSS
-  variables (future one-click theming).
-- `src/ui/` — DOM board (CSS Grid) with minimal reactive patching, controls,
-  input handling.
+Three layers, strictly separated (see [docs/architecture.md](docs/architecture.md)
+for the deep dive — module responsibilities, generation pipeline, data flow):
+
+- `src/core/` — pure, worker-safe, unit-tested engine: puzzle generation,
+  constraint-propagation solver, carving to a unique deduction-solvable puzzle,
+  hint selection, region coloring. Imports nothing from the other layers.
+- `src/worker/` — the Web Worker and its typed message protocol. It owns the RNG
+  and the solutions; the answer is never sent to the main thread.
+- `src/state/` — a tiny custom signal store. Explicit state is just crowns +
+  manual X's; auto-block, render marks, conflicts, and the feature plan are all
+  *derived*. Every board mutation goes through `commit()`/`undo()`.
+- `src/theme/` — every style value lives in one theme object, flattened to CSS
+  variables (so a future one-click theme swap is trivial).
+- `src/ui/` — DOM board (CSS Grid) with minimal reactive patching, the controls,
+  and input handling.
