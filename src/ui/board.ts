@@ -24,8 +24,10 @@ export function createBoard(store: GameStore): BoardView {
   let regionByCell: Uint8Array = new Uint8Array(0);
   let lastMarks = new Uint8Array(0);
   let builtId = -1;
+  let currentN = 0;
 
   function build(p: ActivePuzzle): void {
+    currentN = p.n;
     el.style.setProperty('--n', String(p.n));
     const frag = document.createDocumentFragment();
     cells = new Array(p.n * p.n);
@@ -111,8 +113,8 @@ export function createBoard(store: GameStore): BoardView {
   );
 
   // Regions highlight ONLY as part of the row/column feature: while it's armed
-  // and the hovered region qualifies, outline that region to show which section
-  // to click. (No general hover highlight.)
+  // and the hovered region qualifies, outline just the part of that region lying
+  // on the line that will be blocked (the row or column), indicating direction.
   let lastFeatureCells: number[] = [];
   disposers.push(
     effect(() => {
@@ -120,9 +122,11 @@ export function createBoard(store: GameStore): BoardView {
       const plan = store.featurePlan.get();
       for (const i of lastFeatureCells) cells[i]?.classList.remove('cell--region-hover');
       lastFeatureCells = [];
-      if (!armed || !plan) return;
+      if (!armed || !plan || currentN === 0) return;
       for (let i = 0; i < cells.length; i++) {
-        if (regionByCell[i] === plan.region) {
+        if (regionByCell[i] !== plan.region) continue;
+        const onLine = plan.axis === 'row' ? ((i / currentN) | 0) === plan.line : i % currentN === plan.line;
+        if (onLine) {
           cells[i].classList.add('cell--region-hover');
           lastFeatureCells.push(i);
         }
@@ -130,25 +134,14 @@ export function createBoard(store: GameStore): BoardView {
     }),
   );
 
-  // Non-destructive hint highlight.
-  let lastHintCells: number[] = [];
+  // Brief flash on the crown the Hint button just placed.
+  let lastFlash = -1;
   disposers.push(
     effect(() => {
-      const visible = store.hintVisible.get();
-      const hint = store.hint.get();
-      for (const i of lastHintCells) cells[i]?.classList.remove('cell--hint');
-      lastHintCells = [];
-      if (!visible || !hint) return;
-      const targets: number[] = [];
-      if (hint.kind === 'place-crown' || hint.kind === 'block-cell' || hint.kind === 'focus-region') {
-        targets.push(hint.cell);
-      } else if (hint.kind === 'region-line') {
-        targets.push(...hint.cells);
-      }
-      for (const i of targets) {
-        cells[i]?.classList.add('cell--hint');
-        lastHintCells.push(i);
-      }
+      const fc = store.flashCell.get();
+      if (lastFlash >= 0) cells[lastFlash]?.classList.remove('cell--hint');
+      lastFlash = fc ?? -1;
+      if (fc != null) cells[fc]?.classList.add('cell--hint');
     }),
   );
 

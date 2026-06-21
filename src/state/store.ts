@@ -42,7 +42,8 @@ export interface GameStore {
   hoverRegion: Signal<number | null>;
   rowColArmed: Signal<boolean>;
   hint: Signal<Hint | null>;
-  hintVisible: Signal<boolean>;
+  /** Cell to briefly highlight after the Hint button places a crown there. */
+  flashCell: Signal<number | null>;
   canUndo: Signal<boolean>;
   nextReady: Signal<boolean>;
 
@@ -81,13 +82,15 @@ export function createStore(worker: WorkerClient): GameStore {
   const hoverRegion = signal<number | null>(null);
   const rowColArmed = signal(false);
   const hint = signal<Hint | null>(null);
-  const hintVisible = signal(false);
+  const flashCell = signal<number | null>(null);
   const canUndo = signal(false);
   const nextReady = signal(false);
 
   const history = new History();
   let nextPuzzle: PuzzleData | null = null;
   let hintTimer: ReturnType<typeof setTimeout> | null = null;
+  let flashTimer: ReturnType<typeof setTimeout> | null = null;
+  let placeHintWhenReady = false;
 
   // --- derived state ---
   const autoX = computed<ReadonlySet<number>>(() => {
@@ -142,13 +145,21 @@ export function createStore(worker: WorkerClient): GameStore {
     worker.computeHint(p.id, [...crowns.peek()], [...manualX.peek()], settings.peek().autoBlock);
   }
 
-  /** Recompute status + invalidate the shown hint after any board change. */
+  /** Recompute status + invalidate the preloaded hint after any board change. */
   function postChange(): void {
     const p = puzzle.peek();
     if (p) status.set(isSolved(p.n, p.regionOf, crowns.peek()) ? 'won' : 'playing');
-    hintVisible.set(false);
+    flashCell.set(null);
     hint.set(null);
     scheduleHint();
+  }
+
+  /** Place the hinted crown and briefly flash it so the player sees it appear. */
+  function placeHintCrown(cell: number): void {
+    ensureCrown(cell); // commit crown + auto-block (postChange clears the flash)
+    flashCell.set(cell);
+    if (flashTimer) clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => flashCell.set(null), 900);
   }
 
   function applyDiff(tx: Transaction): void {
@@ -191,7 +202,8 @@ export function createStore(worker: WorkerClient): GameStore {
       history.clear();
       canUndo.set(false);
       hint.set(null);
-      hintVisible.set(false);
+      flashCell.set(null);
+      placeHintWhenReady = false;
       rowColArmed.set(false);
       hoverRegion.set(null);
       status.set('playing');
@@ -260,7 +272,7 @@ export function createStore(worker: WorkerClient): GameStore {
     hoverRegion,
     rowColArmed,
     hint,
-    hintVisible,
+    flashCell,
     canUndo,
     nextReady,
     autoX,
@@ -274,6 +286,10 @@ export function createStore(worker: WorkerClient): GameStore {
         const p = puzzle.peek();
         if (!p || p.id !== puzzleId) return; // stale reply
         hint.set(h);
+        if (placeHintWhenReady && h && h.kind === 'place-crown') {
+          placeHintWhenReady = false;
+          placeHintCrown(h.cell);
+        }
       });
       await this.startNewPuzzle();
     },
@@ -315,7 +331,6 @@ export function createStore(worker: WorkerClient): GameStore {
       const s = settings.peek();
       if (s.autoBlock === on) return;
       persistSettings({ ...s, autoBlock: on });
-      hintVisible.set(false);
       scheduleHint();
     },
 
@@ -348,8 +363,14 @@ export function createStore(worker: WorkerClient): GameStore {
     },
 
     showHint() {
-      hintVisible.set(true);
-      if (!hint.peek()) requestHintNow();
+      const h = hint.peek();
+      if (h && h.kind === 'place-crown') {
+        placeHintCrown(h.cell);
+      } else {
+        // Hint not computed yet — request it and place as soon as it arrives.
+        placeHintWhenReady = true;
+        requestHintNow();
+      }
     },
 
     hasProgress() {
