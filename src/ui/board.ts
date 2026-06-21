@@ -110,23 +110,23 @@ export function createBoard(store: GameStore): BoardView {
     }),
   );
 
-  // Gold outline around the hovered region's cells.
-  let lastHoverRegion: number | null = null;
+  // Regions highlight ONLY as part of the row/column feature: while it's armed
+  // and the hovered region qualifies, outline that region to show which section
+  // to click. (No general hover highlight.)
+  let lastFeatureCells: number[] = [];
   disposers.push(
     effect(() => {
-      const hr = store.hoverRegion.get();
-      if (hr === lastHoverRegion) return;
-      if (lastHoverRegion !== null) {
-        for (let i = 0; i < cells.length; i++) {
-          if (regionByCell[i] === lastHoverRegion) cells[i].classList.remove('cell--region-hover');
+      const armed = store.rowColArmed.get();
+      const plan = store.featurePlan.get();
+      for (const i of lastFeatureCells) cells[i]?.classList.remove('cell--region-hover');
+      lastFeatureCells = [];
+      if (!armed || !plan) return;
+      for (let i = 0; i < cells.length; i++) {
+        if (regionByCell[i] === plan.region) {
+          cells[i].classList.add('cell--region-hover');
+          lastFeatureCells.push(i);
         }
       }
-      if (hr !== null) {
-        for (let i = 0; i < cells.length; i++) {
-          if (regionByCell[i] === hr) cells[i].classList.add('cell--region-hover');
-        }
-      }
-      lastHoverRegion = hr;
     }),
   );
 
