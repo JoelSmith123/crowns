@@ -22,6 +22,44 @@ For rules that only apply to specific parts of the codebase, use `.claude/rules/
 Add a `## Compact Instructions` section to this file once the project is large enough that long sessions are common. Use it to specify what must be preserved when the context window compacts: current branch, modified files, any failing tests, active decisions.
 
 
+## Project: Crowns (LinkedIn "Queens" clone)
+
+Vanilla TS + Vite, zero runtime deps. Fully client-side, deploys static to
+Cloudflare Pages. See `README.md` for play/deploy details.
+
+**Commands:** `npm run dev` · `npm run test` (Vitest) · `npm run build` (tsc +
+vite) · `npm run preview`. To screenshot the running app, use the Claude Preview
+MCP (`launch.json` defines `crowns-dev`), not `sim-screenshot`.
+
+**Architecture (layering — enforce it):**
+- `src/core/` — pure, worker-safe, unit-tested engine. Imports nothing from
+  `state/`, `ui/`, `worker/`, `theme/`. Cells are a single index `i = r*n + c`.
+- `src/worker/` — Web Worker owns the RNG + solutions; the solution is NEVER sent
+  to the main thread. `protocol.ts` is the shared message contract.
+- `src/state/` — custom signal store (`signal.ts`). Explicit state = crowns +
+  manualX; everything else (autoX/marks/conflicts) is DERIVED. All board
+  mutations go through `commit()`/`undo()` (one batch, one transaction).
+- `src/theme/tokens.ts` — the ONLY place with color/style literals; flattened to
+  CSS variables. base.css and components read `var(--…)` only.
+- `src/ui/` — DOM board (CSS Grid) + controls; minimal reactive patching.
+
+**Gotchas / conventions:**
+- Generation is the hard part — see the `crowns-puzzle-generation` memory.
+  Random regions are ~never unique; we carve + propagate + perturb. Don't
+  "simplify" the solver/carve without re-checking uniqueness AND attempt counts.
+- Node timing measurements on this machine are inflated ~3-4× by the Claude app's
+  CPU use; trust load-independent metrics (attempt counts) over wall-clock ms.
+- `tsconfig` uses `verbatimModuleSyntax` — use `import type` for type-only imports.
+- Worker file types `self` via a minimal cast to avoid DOM-vs-WebWorker lib clash.
+
+## Compact Instructions
+Preserve: branch `feat/crowns-initial-build`; remote `origin` =
+github.com/JoelSmith123/crowns (public); PR #1 open (base `main` = M0 scaffold).
+All 10 milestones (M0-M9) complete; 20 Vitest tests passing; app verified
+in-browser. Deploy: user connects Cloudflare Pages themselves (build
+`npm run build`, output `dist/`). Don't re-tune generation perf without reading
+the `crowns-puzzle-generation` memory first.
+
 ## Git and Version Control
 
 - Never commit or push directly to `main`. All changes go through a branch and pull request.

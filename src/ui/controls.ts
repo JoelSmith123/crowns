@@ -1,0 +1,162 @@
+/**
+ * controls.ts — the small, deliberate controls arranged around the board, plus
+ * the large central New Puzzle button. Every control reads/writes the store;
+ * none holds its own state (except the local New-Puzzle confirm).
+ */
+import { effect, signal } from '../state/signal';
+import type { GameStore } from '../state/store';
+import { crownSvg, xSvg, undoSvg, hintSvg, featureSvg } from './icons';
+
+export interface ControlsView {
+  left: HTMLElement;
+  right: HTMLElement;
+  newPuzzle: HTMLElement;
+  dispose: () => void;
+}
+
+function iconButton(label: string, svg: string, cls = ''): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = `ctl ${cls}`.trim();
+  b.setAttribute('aria-label', label);
+  b.title = label;
+  b.innerHTML = `<span class="ctl__icon">${svg}</span>`;
+  return b;
+}
+
+export function createControls(store: GameStore): ControlsView {
+  const disposers: Array<() => void> = [];
+  const left = document.createElement('div');
+  left.className = 'controls controls--left';
+  const right = document.createElement('div');
+  right.className = 'controls controls--right';
+
+  // --- cursor mode switch (crown | block) ---
+  const modeSwitch = document.createElement('div');
+  modeSwitch.className = 'switch';
+  modeSwitch.setAttribute('role', 'group');
+  modeSwitch.setAttribute('aria-label', 'Cursor mode');
+  const crownOpt = document.createElement('button');
+  crownOpt.type = 'button';
+  crownOpt.className = 'switch__opt';
+  crownOpt.title = 'Crown mode — click places a crown';
+  crownOpt.setAttribute('aria-label', 'Crown mode');
+  crownOpt.innerHTML = `<span class="ctl__icon">${crownSvg}</span>`;
+  const blockOpt = document.createElement('button');
+  blockOpt.type = 'button';
+  blockOpt.className = 'switch__opt';
+  blockOpt.title = 'Block mode — click places an X';
+  blockOpt.setAttribute('aria-label', 'Block mode');
+  blockOpt.innerHTML = `<span class="ctl__icon">${xSvg}</span>`;
+  modeSwitch.append(crownOpt, blockOpt);
+  crownOpt.addEventListener('click', () => {
+    if (store.settings.peek().cursorMode !== 'crown') store.toggleCursorMode();
+  });
+  blockOpt.addEventListener('click', () => {
+    if (store.settings.peek().cursorMode !== 'block') store.toggleCursorMode();
+  });
+  disposers.push(
+    effect(() => {
+      const mode = store.settings.get().cursorMode;
+      crownOpt.classList.toggle('switch__opt--active', mode === 'crown');
+      blockOpt.classList.toggle('switch__opt--active', mode === 'block');
+      crownOpt.setAttribute('aria-pressed', String(mode === 'crown'));
+      blockOpt.setAttribute('aria-pressed', String(mode === 'block'));
+    }),
+  );
+
+  // --- auto-block toggle ---
+  const autoToggle = document.createElement('button');
+  autoToggle.type = 'button';
+  autoToggle.className = 'toggle';
+  autoToggle.innerHTML = `<span class="toggle__dot"></span><span class="toggle__label">Auto&#8209;block</span>`;
+  autoToggle.addEventListener('click', () => store.toggleAutoBlock());
+  disposers.push(
+    effect(() => {
+      const on = store.settings.get().autoBlock;
+      autoToggle.classList.toggle('toggle--on', on);
+      autoToggle.setAttribute('aria-pressed', String(on));
+      autoToggle.title = on ? 'Auto-block is on' : 'Auto-block is off';
+    }),
+  );
+
+  // --- undo ---
+  const undoBtn = iconButton('Undo (⌘Z)', undoSvg);
+  undoBtn.addEventListener('click', () => store.undo());
+  disposers.push(
+    effect(() => {
+      const can = store.canUndo.get();
+      undoBtn.disabled = !can;
+    }),
+  );
+
+  // --- hint ---
+  const hintBtn = iconButton('Hint', hintSvg);
+  hintBtn.addEventListener('click', () => store.showHint());
+
+  // --- row/column feature ---
+  const featureBtn = iconButton('Block a row/column for a region', featureSvg, 'ctl--feature');
+  featureBtn.addEventListener('click', () => store.toggleRowColArm());
+  disposers.push(
+    effect(() => {
+      const armed = store.rowColArmed.get();
+      const glow = store.featurePlan.get() !== null;
+      featureBtn.classList.toggle('ctl--armed', armed);
+      featureBtn.classList.toggle('ctl--glow', glow);
+      featureBtn.setAttribute('aria-pressed', String(armed));
+    }),
+  );
+
+  left.append(modeSwitch, autoToggle);
+  right.append(undoBtn, hintBtn, featureBtn);
+
+  // --- new puzzle (large, central) with inline confirm ---
+  const newPuzzle = document.createElement('div');
+  newPuzzle.className = 'newpuzzle';
+  const newBtn = document.createElement('button');
+  newBtn.type = 'button';
+  newBtn.className = 'newpuzzle__btn';
+  newBtn.innerHTML = `<span class="newpuzzle__crown">${crownSvg}</span><span>New Puzzle</span>`;
+  const confirmEl = document.createElement('div');
+  confirmEl.className = 'newpuzzle__confirm';
+  confirmEl.innerHTML = `
+    <span class="newpuzzle__q">Start a new puzzle? Current progress will be lost.</span>
+    <button type="button" class="newpuzzle__yes">New puzzle</button>
+    <button type="button" class="newpuzzle__no">Keep playing</button>`;
+  newPuzzle.append(newBtn, confirmEl);
+
+  const confirming = signal(false);
+  newBtn.addEventListener('click', () => {
+    if (store.hasProgress() && store.status.peek() === 'playing') {
+      confirming.set(true);
+    } else {
+      void store.startNewPuzzle();
+    }
+  });
+  confirmEl.querySelector('.newpuzzle__yes')!.addEventListener('click', () => {
+    confirming.set(false);
+    void store.startNewPuzzle();
+  });
+  confirmEl.querySelector('.newpuzzle__no')!.addEventListener('click', () => confirming.set(false));
+  disposers.push(
+    effect(() => {
+      newPuzzle.classList.toggle('newpuzzle--confirming', confirming.get());
+    }),
+  );
+  // Reset the confirm whenever a new puzzle actually loads.
+  disposers.push(
+    effect(() => {
+      store.puzzle.get();
+      confirming.set(false);
+    }),
+  );
+
+  return {
+    left,
+    right,
+    newPuzzle,
+    dispose() {
+      for (const d of disposers) d();
+    },
+  };
+}
