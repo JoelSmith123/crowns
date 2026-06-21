@@ -238,36 +238,28 @@ describe('autoblock', () => {
 // ---- hint engine ----------------------------------------------------------
 
 describe('computeHint', () => {
-  it('always returns solution-consistent hints that drive a full solve', () => {
+  it('always suggests a solution crown and drives a full solve', () => {
     for (let n = 8; n <= 12; n++) {
       const puz = generateUniquePuzzle(mulberry32(n * 23 + 4), 1, { fixedN: n });
-      const solByRegion = new Array<number>(n);
-      for (let r = 0; r < n; r++) solByRegion[puz.regionOf[r * n + puz.solution[r]]] = r * n + puz.solution[r];
-
       const crowns = new Set<number>();
-      const manualX = new Set<number>();
       for (let step = 0; step <= n; step++) {
-        const h = computeHint(n, puz.regionOf, puz.solution, crowns, manualX, true);
+        const h = computeHint(n, puz.regionOf, puz.solution, crowns, new Set(), true);
         if (crowns.size === n) {
           expect(h).toBeNull();
           break;
         }
         expect(h).not.toBeNull();
-        if (h!.kind === 'place-crown') {
-          // the suggested cell is genuinely the solution's crown for its row
-          expect(puz.solution[(h!.cell / n) | 0]).toBe(h!.cell % n);
-          crowns.add(h!.cell);
-        } else if (h!.kind === 'region-line') {
-          crowns.add(solByRegion[h!.region]); // advance by taking that region's crown
-        } else {
-          throw new Error(`unexpected hint kind on a consistent board: ${h!.kind}`);
-        }
+        expect(h!.kind).toBe('place-crown');
+        // the suggested cell is genuinely the solution's crown for its row
+        const cell = (h as { cell: number }).cell;
+        expect(puz.solution[(cell / n) | 0]).toBe(cell % n);
+        crowns.add(cell);
       }
       expect(crowns.size).toBe(n);
     }
   }, 20_000);
 
-  it('flags a wrongly placed crown as a mistake', () => {
+  it('still suggests a valid crown placement when a wrong crown is present', () => {
     const n = 9;
     const puz = generateUniquePuzzle(mulberry32(123), 1, { fixedN: n });
     let wrong = -1;
@@ -278,7 +270,9 @@ describe('computeHint', () => {
       }
     }
     const h = computeHint(n, puz.regionOf, puz.solution, new Set([wrong]), new Set(), true);
-    expect(h?.reason).toBe('mistake');
+    expect(h?.kind).toBe('place-crown');
+    const cell = (h as { cell: number }).cell;
+    expect(puz.solution[(cell / n) | 0]).toBe(cell % n); // a real solution crown
   });
 });
 

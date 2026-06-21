@@ -1,15 +1,13 @@
 /**
  * input.ts — pointer & hover handling for the board (event delegation).
  *
- * Single vs double click: we detect double-click manually (two clicks on the
- * same cell) instead of the native event, so single actions are responsive.
- * A pending single click is flushed immediately when a *different* cell is
- * clicked, so rapid multi-cell placement never feels laggy; only a lone final
- * click waits out the double-click window.
+ * Single vs double click uses the browser's native click count (`event.detail`)
+ * rather than a manual timer: the first click acts immediately (no lag), and a
+ * genuine double-click (detail === 2, using the OS double-click threshold) undoes
+ * that first single action and performs the double action instead. This makes
+ * single clicks instant and double-clicks reliable.
  */
 import type { GameStore } from '../state/store';
-
-const DOUBLE_MS = 200;
 
 function cellIndex(target: EventTarget | null): number {
   if (!(target instanceof Element)) return -1;
@@ -26,34 +24,29 @@ function cellRegion(target: EventTarget | null): number | null {
 }
 
 export function attachBoardInput(board: HTMLElement, store: GameStore): () => void {
-  let pending: { cell: number; timer: ReturnType<typeof setTimeout> } | null = null;
-
-  function flushPending(): void {
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    const cell = pending.cell;
-    pending = null;
-    store.clickCell(cell);
-  }
+  // Tracks whether the previous click executed the armed row/column feature, so
+  // a trailing second click doesn't undo it.
+  let lastWasFeature = false;
 
   function onClick(e: MouseEvent): void {
     const cell = cellIndex(e.target);
     if (cell < 0) return;
-    if (pending && pending.cell === cell) {
-      // second click on the same cell → double click
-      clearTimeout(pending.timer);
-      pending = null;
-      store.doubleClickCell(cell);
+
+    if (store.rowColArmed.peek()) {
+      store.clickCell(cell); // execute the feature on this region
+      lastWasFeature = true;
       return;
     }
-    flushPending(); // a different cell — commit the previous single now
-    pending = {
-      cell,
-      timer: setTimeout(() => {
-        pending = null;
-        store.clickCell(cell);
-      }, DOUBLE_MS),
-    };
+
+    if (e.detail === 2 && !lastWasFeature) {
+      // Second click of a double-click: revert the first click's single action,
+      // then perform the double action (the opposite of the current mode).
+      store.undo();
+      store.doubleClickCell(cell);
+    } else {
+      store.clickCell(cell); // instant single action
+    }
+    lastWasFeature = false;
   }
 
   function onPointerOver(e: PointerEvent): void {
@@ -70,7 +63,6 @@ export function attachBoardInput(board: HTMLElement, store: GameStore): () => vo
     const cell = cellIndex(e.target);
     if (cell < 0) return;
     e.preventDefault();
-    flushPending();
     store.blockAt(cell);
   }
 
@@ -132,6 +124,5 @@ export function attachBoardInput(board: HTMLElement, store: GameStore): () => vo
     board.removeEventListener('pointerleave', onPointerLeave);
     board.removeEventListener('contextmenu', onContextMenu);
     board.removeEventListener('keydown', onKeyDown);
-    if (pending) clearTimeout(pending.timer);
   };
 }
