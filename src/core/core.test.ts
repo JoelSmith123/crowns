@@ -4,7 +4,7 @@ import { neighbors4, isAdjacent8 } from './grid';
 import { randomSolution, growRegions, passesQualityGates } from './generator';
 import { countSolutions, firstSolution, countSolutionsBrute } from './solver';
 import { generateUniquePuzzle } from './uniqueness';
-import { assignRegionColors, buildRegionAdjacency } from './palette';
+import { assignRegionColors } from './palette';
 import { computeHint } from './hint';
 import { computeAutoX, computeConflicts, isSolved, rowColPlan } from './autoblock';
 
@@ -285,7 +285,7 @@ describe('computeHint', () => {
 // ---- palette / coloring ---------------------------------------------------
 
 describe('assignRegionColors', () => {
-  it('never gives adjacent regions the same color', () => {
+  it('gives every region a distinct color (no two regions share one)', () => {
     const paletteSize = 16;
     for (let n = 8; n <= 15; n++) {
       const rng = mulberry32(n * 13 + 3);
@@ -296,10 +296,8 @@ describe('assignRegionColors', () => {
         expect(c).toBeGreaterThanOrEqual(0);
         expect(c).toBeLessThan(paletteSize);
       }
-      const adj = buildRegionAdjacency(n, puz.regionOf);
-      for (let g = 0; g < n; g++) {
-        for (const h of adj[g]) expect(colors[g]).not.toBe(colors[h]);
-      }
+      // distinct colors → also guarantees no adjacent region shares a color
+      expect(new Set(colors).size).toBe(n);
     }
   }, 30_000);
 });

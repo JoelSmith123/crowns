@@ -41,6 +41,7 @@ export function createBoard(store: GameStore): BoardView {
       cell.dataset.i = String(i);
       cell.dataset.region = String(region);
       cell.setAttribute('role', 'gridcell');
+      cell.tabIndex = i === 0 ? 0 : -1; // roving tabindex for keyboard navigation
       cell.style.setProperty('--cell-bg', `var(--region-${paletteIdx}-fill)`);
       cell.style.setProperty('--cell-ink', `var(--region-${paletteIdx}-ink)`);
 

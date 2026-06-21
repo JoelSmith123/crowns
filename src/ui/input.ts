@@ -74,16 +74,64 @@ export function attachBoardInput(board: HTMLElement, store: GameStore): () => vo
     store.blockAt(cell);
   }
 
+  // Keyboard: arrow keys move a roving focus; Enter/Space act per cursor mode,
+  // X toggles a block, C crowns.
+  function onKeyDown(e: KeyboardEvent): void {
+    const i = cellIndex(e.target);
+    if (i < 0) return;
+    const p = store.puzzle.peek();
+    if (!p) return;
+    const n = p.n;
+    const row = (i / n) | 0;
+    const col = i % n;
+    let target = i;
+    switch (e.key) {
+      case 'ArrowRight': target = col < n - 1 ? i + 1 : i; break;
+      case 'ArrowLeft': target = col > 0 ? i - 1 : i; break;
+      case 'ArrowUp': target = row > 0 ? i - n : i; break;
+      case 'ArrowDown': target = row < n - 1 ? i + n : i; break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        store.clickCell(i);
+        return;
+      case 'x':
+      case 'X':
+        e.preventDefault();
+        store.blockAt(i);
+        return;
+      case 'c':
+      case 'C':
+        e.preventDefault();
+        store.doubleClickCell(i);
+        return;
+      default:
+        return;
+    }
+    e.preventDefault();
+    if (target !== i) {
+      const cur = board.querySelector<HTMLElement>(`.cell[data-i="${i}"]`);
+      const next = board.querySelector<HTMLElement>(`.cell[data-i="${target}"]`);
+      if (cur && next) {
+        cur.tabIndex = -1;
+        next.tabIndex = 0;
+        next.focus();
+      }
+    }
+  }
+
   board.addEventListener('click', onClick);
   board.addEventListener('pointerover', onPointerOver);
   board.addEventListener('pointerleave', onPointerLeave);
   board.addEventListener('contextmenu', onContextMenu);
+  board.addEventListener('keydown', onKeyDown);
 
   return () => {
     board.removeEventListener('click', onClick);
     board.removeEventListener('pointerover', onPointerOver);
     board.removeEventListener('pointerleave', onPointerLeave);
     board.removeEventListener('contextmenu', onContextMenu);
+    board.removeEventListener('keydown', onKeyDown);
     if (pending) clearTimeout(pending.timer);
   };
 }

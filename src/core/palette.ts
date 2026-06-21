@@ -57,10 +57,12 @@ function hueDist(a: number, b: number): number {
 }
 
 /**
- * Returns regionColors[g] = palette index for region g. Greedy graph coloring
- * by descending degree; among colors not used by colored neighbors, pick the
- * one most hue-distant from neighbors (or random if no hues given), with light
- * jitter for per-puzzle variety.
+ * Returns regionColors[g] = palette index for region g. Each region gets a
+ * DISTINCT color (like LinkedIn Queens — the palette has more entries than the
+ * max board size), so the player can always tell regions apart. Regions are
+ * colored by descending adjacency degree; among the globally-unused colors, each
+ * picks the one most hue-distant from its already-colored neighbors (with light
+ * jitter for per-puzzle variety) so similar hues don't sit next to each other.
  */
 export function assignRegionColors(
   n: number,
@@ -72,38 +74,31 @@ export function assignRegionColors(
   const adj = buildRegionAdjacency(n, regionOf);
   const order = Array.from({ length: n }, (_, g) => g).sort((a, b) => adj[b].size - adj[a].size);
   const color = new Array<number>(n).fill(-1);
+  const usedColors = new Set<number>();
 
   for (const g of order) {
-    const used = new Set<number>();
-    for (const h of adj[g]) {
-      if (color[h] >= 0) used.add(color[h]);
-    }
     const avail: number[] = [];
     for (let k = 0; k < paletteSize; k++) {
-      if (!used.has(k)) avail.push(k);
+      if (!usedColors.has(k)) avail.push(k); // global distinctness
     }
-    if (avail.length === 0) {
-      color[g] = Math.floor(rng() * paletteSize); // unreachable for our sizes
-      continue;
-    }
+    // avail is never empty: paletteSize >= n.
+    let chosen = avail[Math.floor(rng() * avail.length)];
     if (hues) {
-      let best = avail[0];
       let bestDist = -1;
       for (const k of avail) {
         let minD = 360;
         for (const h of adj[g]) {
           if (color[h] >= 0) minD = Math.min(minD, hueDist(hues[k], hues[color[h]]));
         }
-        const d = (minD === 360 ? 180 : minD) + rng() * 8; // jitter for variety
+        const d = (minD === 360 ? 180 : minD) + rng() * 6; // jitter for variety
         if (d > bestDist) {
           bestDist = d;
-          best = k;
+          chosen = k;
         }
       }
-      color[g] = best;
-    } else {
-      color[g] = avail[Math.floor(rng() * avail.length)];
     }
+    color[g] = chosen;
+    usedColors.add(chosen);
   }
 
   return color;
