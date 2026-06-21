@@ -95,7 +95,7 @@ export function createControls(store: GameStore): ControlsView {
   hintBtn.addEventListener('click', () => store.showHint());
 
   // --- row/column feature ---
-  const featureBtn = iconButton('Block the rest of a row/column for a line-confined region', featureSvg, 'Line', 'ctl--feature');
+  const featureBtn = iconButton('Block the rest of a row/column for a line-confined region', featureSvg, 'Block line', 'ctl--feature');
   featureBtn.addEventListener('click', () => store.toggleRowColArm());
   disposers.push(
     effect(() => {
