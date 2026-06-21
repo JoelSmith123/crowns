@@ -113,18 +113,21 @@ export function createBoard(store: GameStore): BoardView {
   );
 
   // Regions highlight ONLY as part of the row/column feature: while it's armed
-  // and the hovered region qualifies, outline just the part of that region lying
-  // on the line that will be blocked (the row or column), indicating direction.
+  // and the hovered region qualifies, outline the region's still-open (unblocked,
+  // uncrowned) cells that lie on the line to be blocked — i.e. the candidate
+  // cells in the block direction.
   let lastFeatureCells: number[] = [];
   disposers.push(
     effect(() => {
       const armed = store.rowColArmed.get();
       const plan = store.featurePlan.get();
+      const m = store.marks.get();
       for (const i of lastFeatureCells) cells[i]?.classList.remove('cell--region-hover');
       lastFeatureCells = [];
       if (!armed || !plan || currentN === 0) return;
       for (let i = 0; i < cells.length; i++) {
         if (regionByCell[i] !== plan.region) continue;
+        if (m[i] !== Mark.Empty) continue; // only unblocked, uncrowned tiles
         const onLine = plan.axis === 'row' ? ((i / currentN) | 0) === plan.line : i % currentN === plan.line;
         if (onLine) {
           cells[i].classList.add('cell--region-hover');
