@@ -76,3 +76,314 @@ body {
   height: 100%;
   display: block;
 }
+
+/* X marks read as soft, same-hue tints; crowns are full strength. */
+.cell[data-mark='auto-x'] .cell__mark,
+.cell[data-mark='manual-x'] .cell__mark {
+  opacity: var(--x-opacity);
+}
+
+/* Cell highlight states (one box-shadow wins; precedence: hint > conflict > hover). */
+.cell--region-hover {
+  box-shadow: inset 0 0 0 3px var(--accent);
+  z-index: 1;
+}
+.cell--conflict {
+  box-shadow: inset 0 0 0 3px var(--conflict);
+  z-index: 2;
+}
+.cell--hint {
+  box-shadow: inset 0 0 0 4px var(--accent);
+  z-index: 3;
+}
+
+/* ---- Layout --------------------------------------------------------------- */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(16px, 3.2vh, 34px);
+  width: 100%;
+}
+
+.wordmark {
+  margin: 0;
+  font-size: clamp(1.1rem, 2.4vw, 1.6rem);
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--page-text);
+}
+
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(12px, 2.4vw, 30px);
+}
+
+.board-wrap {
+  position: relative;
+  display: flex;
+}
+
+/* Soft gold sweep around the board when solved. */
+.board-wrap:has(.win--show) .board {
+  box-shadow: 0 0 0 3px var(--accent), 0 0 24px var(--accent);
+  transition: box-shadow 0.5s ease;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--control-gap);
+  align-items: stretch;
+}
+
+/* ---- Controls ------------------------------------------------------------- */
+
+.ctl {
+  width: var(--control-size);
+  height: var(--control-size);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 2px solid var(--control-border);
+  border-radius: var(--control-radius);
+  background: var(--control-bg);
+  color: var(--control-text);
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.4s ease, opacity 0.15s ease;
+}
+.ctl:hover:not(:disabled) {
+  background: var(--control-bg-hover);
+}
+.ctl:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.ctl__icon {
+  width: 56%;
+  height: 56%;
+  display: grid;
+  place-items: center;
+}
+.ctl__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Feature button: steady (non-blinking) gold glow when it can be used. */
+.ctl--glow {
+  box-shadow: 0 0 0 2px var(--accent), 0 0 14px var(--accent);
+}
+.ctl--armed {
+  background: var(--control-active-bg);
+  color: var(--control-active-text);
+}
+
+.switch {
+  display: inline-flex;
+  border: 2px solid var(--control-border);
+  border-radius: var(--control-radius);
+  overflow: hidden;
+}
+.switch__opt {
+  width: var(--control-size);
+  height: var(--control-size);
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: var(--control-bg);
+  color: var(--control-text);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.switch__opt .ctl__icon,
+.switch__opt {
+  --i: 56%;
+}
+.switch__opt > .ctl__icon {
+  width: 56%;
+  height: 56%;
+}
+.switch__opt + .switch__opt {
+  border-left: 2px solid var(--control-border);
+}
+.switch__opt--active {
+  background: var(--control-active-bg);
+  color: var(--control-active-text);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--control-size);
+  padding: 0 12px;
+  border: 2px solid var(--control-border);
+  border-radius: var(--control-radius);
+  background: var(--control-bg);
+  color: var(--control-text);
+  cursor: pointer;
+}
+.toggle__dot {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--control-border);
+  background: transparent;
+  transition: background 0.15s ease;
+  flex: none;
+}
+.toggle--on .toggle__dot {
+  background: var(--accent);
+}
+.toggle__label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ---- New Puzzle ----------------------------------------------------------- */
+
+.newpuzzle {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: var(--control-size);
+}
+.newpuzzle__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 30px;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: var(--page-text);
+  color: var(--page-bg);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.newpuzzle__btn:hover {
+  background: var(--accent);
+  color: var(--page-text);
+}
+.newpuzzle__crown {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+}
+.newpuzzle__confirm {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 2px solid var(--control-border);
+  border-radius: var(--control-radius);
+  background: var(--control-bg);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.newpuzzle--confirming .newpuzzle__btn {
+  display: none;
+}
+.newpuzzle--confirming .newpuzzle__confirm {
+  display: flex;
+}
+.newpuzzle__q {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.newpuzzle__yes,
+.newpuzzle__no {
+  border: 2px solid var(--control-border);
+  border-radius: var(--control-radius);
+  padding: 6px 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.newpuzzle__yes {
+  background: var(--page-text);
+  color: var(--page-bg);
+  border-color: var(--page-text);
+}
+.newpuzzle__no {
+  background: var(--control-bg);
+  color: var(--control-text);
+}
+
+/* ---- Win + loading -------------------------------------------------------- */
+
+.win {
+  position: absolute;
+  top: calc(-1 * var(--control-size));
+  left: 50%;
+  transform: translateX(-50%) translateY(6px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.win--show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.win__badge {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--page-text);
+  padding: 5px 14px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.loading {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--page-muted);
+}
+.loading--show {
+  display: flex;
+}
+.loading__dot {
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+/* ---- Responsive ----------------------------------------------------------- */
+
+/* Stack controls above/below the board when there isn't room to flank it. */
+@media (max-width: 960px) {
+  .stage {
+    flex-direction: column;
+  }
+  .controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
