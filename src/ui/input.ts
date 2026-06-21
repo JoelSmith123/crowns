@@ -103,7 +103,7 @@ export function attachBoardInput(board: HTMLElement, store: GameStore): () => vo
       case 'c':
       case 'C':
         e.preventDefault();
-        store.doubleClickCell(i);
+        store.crownAt(i);
         return;
       default:
         return;

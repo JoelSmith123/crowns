@@ -59,6 +59,8 @@ export interface GameStore {
   doubleClickCell(cell: number): void;
   /** Toggle a manual block regardless of cursor mode (used by right-click). */
   blockAt(cell: number): void;
+  /** Place a crown regardless of cursor mode (used by the keyboard 'c'). */
+  crownAt(cell: number): void;
   toggleCursorMode(): void;
   setAutoBlock(on: boolean): void;
   toggleAutoBlock(): void;
@@ -225,6 +227,19 @@ export function createStore(worker: WorkerClient): GameStore {
     }
   }
 
+  // Double-click / explicit-key actions: set the mark (idempotent), not toggle.
+  function ensureCrown(cell: number): void {
+    if (crowns.peek().has(cell)) return;
+    const del = manualX.peek().has(cell) ? [cell] : [];
+    commit({ crownsAdd: [cell], crownsDel: [], manualXAdd: [], manualXDel: del, label: 'crown' });
+  }
+
+  function ensureBlock(cell: number): void {
+    if (manualX.peek().has(cell)) return;
+    const del = crowns.peek().has(cell) ? [cell] : [];
+    commit({ crownsAdd: [], crownsDel: del, manualXAdd: [cell], manualXDel: [], label: 'block' });
+  }
+
   function executeFeature(cell: number): void {
     const p = puzzle.peek();
     rowColArmed.set(false);
@@ -277,13 +292,18 @@ export function createStore(worker: WorkerClient): GameStore {
         executeFeature(cell);
         return;
       }
-      if (crowns.peek().has(cell)) return; // already a crown
-      const del = manualX.peek().has(cell) ? [cell] : [];
-      commit({ crownsAdd: [cell], crownsDel: [], manualXAdd: [], manualXDel: del, label: 'crown' });
+      // Double-click does the OPPOSITE of the current cursor mode's single click:
+      // block mode → crown, crown mode → block.
+      if (settings.peek().cursorMode === 'block') ensureCrown(cell);
+      else ensureBlock(cell);
     },
 
     blockAt(cell) {
       blockToggle(cell);
+    },
+
+    crownAt(cell) {
+      ensureCrown(cell);
     },
 
     toggleCursorMode() {

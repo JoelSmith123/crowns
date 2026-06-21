@@ -186,6 +186,7 @@ body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   line-height: 1;
+  white-space: nowrap;
 }
 
 /* Feature button: steady (non-blinking) gold glow when it can be used. */
@@ -227,6 +228,7 @@ body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   line-height: 1;
+  white-space: nowrap;
 }
 .switch__opt + .switch__opt {
   border-left: 2px solid var(--control-border);
