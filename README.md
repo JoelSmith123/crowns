@@ -17,10 +17,17 @@ Live: https://crowns-1dw.pages.dev
   - Right-click always toggles a block.
 - **Auto-block** (on by default) — placing a crown auto-X's its whole row,
   column, region, and 8 neighbors. Toggle it off in the controls.
+- **Easier mode** (on by default) — newly generated puzzles guarantee some
+  single-row / single-column sections (more on bigger boards: 2 up to 9×9, 3 for
+  10–12, 4 for 13×13+), which makes them easier to crack. Toggle it off for
+  unconstrained puzzles; the change applies to the next New Puzzle.
 - **Undo** — the undo button or `Cmd/Ctrl+Z`. Reverts a move *and* its auto-blocks
   as one step.
-- **Hint** — places the next correct crown (with auto-block) and briefly flashes
-  it. Press repeatedly to walk through a solve. Preloaded, so it's instant.
+- **Random Hint** — places the next correct crown (with auto-block) and briefly
+  flashes it. Press repeatedly to walk through a solve. Preloaded, so it's instant.
+- **Block Hint** — reveal the crown of a *section you choose*: click it to arm,
+  then click any tile of a colored section and that section's crown appears (with
+  auto-block). The hovered section is outlined while armed.
 - **Block line** (the row/column feature) — when a region's still-open cells all
   lie on one row or column, this side button gently glows. Click it to arm, then
   click a tile of that region to block the rest of that line. While armed, the
@@ -29,7 +36,7 @@ Live: https://crowns-1dw.pages.dev
   one is in progress. The next puzzle is preloaded, so it's instant.
 
 Keyboard: arrow keys move focus on the board; `Space`/`Enter` does the cursor
-mode's action on the focused cell; `X` blocks it, `C` crowns it; `H` hint,
+mode's action on the focused cell; `X` blocks it, `C` crowns it; `H` random hint,
 `B` switch cursor mode, `A` toggle auto-block, `Cmd/Ctrl+Z` undo.
 
 ## Develop

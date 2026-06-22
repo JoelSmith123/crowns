@@ -6,6 +6,8 @@
 export interface Settings {
   cursorMode: 'crown' | 'block';
   autoBlock: boolean;
+  /** Easier mode: guaranteed one-line regions + smaller/more-uniform regions (default on). */
+  easierMode: boolean;
   /** Reserved for a future theme swap; no in-page toggle in v1. */
   themeName: string;
 }
@@ -15,6 +17,7 @@ const KEY = 'crowns.settings.v1';
 export const DEFAULT_SETTINGS: Settings = {
   cursorMode: 'block',
   autoBlock: true,
+  easierMode: true,
   themeName: 'bauhaus-warm',
 };
 
@@ -26,6 +29,7 @@ export function loadSettings(): Settings {
     return {
       cursorMode: p.cursorMode === 'block' ? 'block' : 'crown',
       autoBlock: p.autoBlock !== false, // default true
+      easierMode: p.easierMode !== false, // default true
       themeName: typeof p.themeName === 'string' ? p.themeName : DEFAULT_SETTINGS.themeName,
     };
   } catch {

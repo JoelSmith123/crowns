@@ -58,3 +58,21 @@ export function computeHint(
     reason: bestOpen === 1 ? 'region-single' : 'solution-fallback',
   };
 }
+
+/**
+ * The solution's crown cell for a single region — used by Block Hint to reveal
+ * the crown of a player-chosen region. Each region holds exactly one solution
+ * crown. Returns the cell index, or -1 if the region has none (shouldn't happen).
+ */
+export function solutionCrownForRegion(
+  n: number,
+  regionOf: ArrayLike<number>,
+  solution: number[],
+  region: number,
+): number {
+  for (let r = 0; r < n; r++) {
+    const cell = r * n + solution[r];
+    if (regionOf[cell] === region) return cell;
+  }
+  return -1;
+}

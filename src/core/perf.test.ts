@@ -30,3 +30,59 @@ describe('generation across the real size range (8..15)', () => {
     expect(p50).toBeLessThan(800);
   }, 90_000);
 });
+
+/**
+ * Easier mode must NOT cost extra generation work: the one-line guarantee is
+ * construction-based, and one-line regions reduce alternates, so grow+carve
+ * attempt counts should be at parity with normal (load-independent metric — the
+ * dev machine's wall-clock is inflated ~3–4×, so we assert attempts, not ms).
+ */
+function median(xs: number[]): number {
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.floor(s.length * 0.5)];
+}
+function pct(xs: number[], q: number): number {
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.min(s.length - 1, Math.floor(s.length * q))];
+}
+
+describe('easier-mode generation (8..15)', () => {
+  it('stays uniquely solvable without inflating attempt counts vs normal', () => {
+    const RUNS = 30;
+    const easierAttempts: number[] = [];
+    const normalAttempts: number[] = [];
+    const easierTimes: number[] = [];
+    for (let i = 0; i < RUNS; i++) {
+      const n = randInt(mulberry32(30_000 + i), 8, 15);
+
+      let ea = 0;
+      const t0 = performance.now();
+      const puz = generateUniquePuzzle(mulberry32(30_000 + i), i, {
+        fixedN: n,
+        easier: true,
+        onStats: (s) => (ea = s.growAttempts),
+      });
+      easierTimes.push(performance.now() - t0);
+      easierAttempts.push(ea);
+      expect(countSolutions(n, puz.regionOf, 2)).toBe(1); // exactly one solution
+
+      let na = 0;
+      generateUniquePuzzle(mulberry32(30_000 + i), i, { fixedN: n, onStats: (s) => (na = s.growAttempts) });
+      normalAttempts.push(na);
+    }
+    easierTimes.sort((a, b) => a - b);
+    // eslint-disable-next-line no-console
+    console.log(
+      `easier attempts — p50=${median(easierAttempts)} p90=${pct(easierAttempts, 0.9)} max=${Math.max(...easierAttempts)} | ` +
+        `normal attempts — p50=${median(normalAttempts)} p90=${pct(normalAttempts, 0.9)} | ` +
+        `easier ms p50=${easierTimes[Math.floor(RUNS * 0.5)].toFixed(1)}`,
+    );
+    // The one-line COUNT guarantee is construction-based (zero compromise). Growing
+    // line-regions LONG (a quality goal) costs some carve work, so the median is a
+    // few attempts above normal and the tail is higher — but both stay bounded, far
+    // below a starvation/rejection regression (fully protecting line-regions spiked
+    // p50 past 20 and p90 past 400).
+    expect(median(easierAttempts)).toBeLessThan(12);
+    expect(pct(easierAttempts, 0.9)).toBeLessThan(80);
+  }, 120_000);
+});

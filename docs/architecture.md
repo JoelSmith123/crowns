@@ -65,14 +65,20 @@ makes undo and the auto-block toggle fall out for free (see "Derived overlay").
   reference solver used only to cross-check in tests.
 - **`generator.ts`** — `randomSolution` (a column permutation with
   `|p[r]-p[r+1]| ≥ 2`, the complete adjacency condition), `growRegions`
-  (weighted multi-source BFS from the crown seeds), and `carveToUnique`.
-- **`uniqueness.ts`** — `generateUniquePuzzle` ties it together.
+  (weighted multi-source BFS from the crown seeds), and `carveToUnique`. Both
+  growth and carve take an optional easier-mode `plan` (see `easier.ts`).
+- **`easier.ts`** — easier-mode policy: `planEasier` picks the guaranteed
+  one-line regions and their pre-claim cells; `lineRegionThreshold` (2/3/4 by
+  size) and `countOneLineRegions` (the gate).
+- **`uniqueness.ts`** — `generateUniquePuzzle` ties it together (`opts.easier`
+  re-plans per attempt).
 - **`palette.ts`** — `assignRegionColors` gives every region a **distinct**
   palette color (graph-colored by descending adjacency degree, choosing the
   most hue-distant available color), plus `hexToHue`/`buildRegionAdjacency`.
 - **`autoblock.ts`** — `computeAutoX` (the derived block overlay),
   `computeConflicts`, `isSolved`, and `rowColPlan` (the feature predicate).
-- **`hint.ts`** — `computeHint` returns the next crown to place.
+- **`hint.ts`** — `computeHint` returns the next crown to place;
+  `solutionCrownForRegion` answers Block Hint (a chosen region's solution crown).
 
 ### Generation pipeline (the hard part)
 
@@ -98,18 +104,34 @@ Two reasons this is delicate: (a) random regions are ~0% unique, so you can't
 just "generate and check"; (b) the dev machine's timing is unreliable (see
 Gotchas), so tune against **attempt counts**, not wall-clock.
 
+**Easier mode** (opt-in, default on). The one-line region COUNT is guaranteed by
+construction (never rejection sampling). `planEasier` picks `threshold(n)` regions
+(2/3/4 by size) to confine to a single row/column, each with a varied target
+length. `growRegions(plan)` grows them axis-restricted and FIRST (so blobs can't
+truncate them), with a pre-claim keeping every region ≥ 2 and a **blob-only**
+cleanup that leaves a rare strip-ringed pocket UNASSIGNED (→ regrow in
+`uniqueness.ts`, never a broken line). `carveToUnique(plan)` never moves a cell
+INTO a line-region, and **prefers** trimming blob crowns over line crowns: fully
+protecting line cells starves carve (crown-swap cycles among long strips spike
+attempts), while no preference trims them to dominoes — the preference keeps them
+longish (avg ≈ 3, varied 2–6). Final length is a quality/perf trade (carve trims
+some back for uniqueness, costing a few extra attempts); the `countOneLineRegions`
+gate is belt-and-suspenders.
+
 ## worker/ — the boundary
 
-- **`protocol.ts`** — the shared, typed message contract. Requests: `GENERATE`,
-  `COMPUTE_HINT`. Responses: `GENERATED` (sends `{id, n, regionOf}` — **never the
-  solution**), `HINT`, `ERROR`. Every message carries a `reqId`; puzzle-scoped
-  ones carry `puzzleId` so the main thread can drop stale replies.
+- **`protocol.ts`** — the shared, typed message contract. Requests: `GENERATE`
+  (carries the `easier` flag), `COMPUTE_HINT`, `REVEAL_REGION` (Block Hint).
+  Responses: `GENERATED` (sends `{id, n, regionOf}` — **never the solution**),
+  `HINT`, `REGION_CROWN` (one region's solution crown), `ERROR`. Every message
+  carries a `reqId`; puzzle-scoped ones carry `puzzleId` so the main thread can
+  drop stale replies.
 - **`puzzle.worker.ts`** — owns the RNG and a small map of `{n, regionOf,
-  solution}` by puzzle id, so it can answer hints without the solution ever
-  crossing to the main thread. `self` is typed via a minimal cast to avoid the
-  DOM-vs-WebWorker lib clash.
-- **`client.ts`** — main-thread wrapper: `generate()` is promise-based; hints are
-  a push channel (`onHint`).
+  solution}` by puzzle id, so it can answer hints (and Block Hint region reveals)
+  without the solution ever crossing to the main thread. `self` is typed via a
+  minimal cast to avoid the DOM-vs-WebWorker lib clash.
+- **`client.ts`** — main-thread wrapper: `generate(easier)` and `revealRegion()`
+  are promise-based; hints are a push channel (`onHint`).
 
 ## state/ — the reactive store
 
@@ -119,12 +141,12 @@ Gotchas), so tune against **attempt counts**, not wall-clock.
   subscribes to the signals it reads (no separate node ⇒ no glitches). Recompute
   cost is trivial at ≤225 cells.
 - **`store.ts`** — `createStore(worker)`. Signals: `puzzle`, `status`, `crowns`,
-  `manualX`, `settings`, `hoverRegion`, `rowColArmed`, `hint`, `flashCell`,
-  `canUndo`, `nextReady`. Derived computeds: `autoX`, `blocked`, `marks`
-  (the only thing the renderer reads), `conflicts`, `featurePlan`.
+  `manualX`, `settings`, `hoverRegion`, `rowColArmed`, `blockHintArmed`, `hint`,
+  `flashCell`, `canUndo`, `nextReady`. Derived computeds: `autoX`, `blocked`,
+  `marks` (the only thing the renderer reads), `conflicts`, `featurePlan`.
 - **`history.ts`** — the undo stack of `Transaction`s.
 - **`persistence.ts`** — `localStorage` for **settings only** (cursor mode
-  defaults to **block**, auto-block on). Wrapped in try/catch.
+  defaults to **block**, auto-block on, easier mode on). Wrapped in try/catch.
 
 ### Derived overlay (why undo is trivial)
 
@@ -136,15 +158,19 @@ and toggling auto-block is just a recompute — no orphaned marks, no bookkeepin
 ### Click semantics (store-side)
 
 - `clickCell` — the cursor mode's single action (block in block mode, crown in
-  crown mode), unless the feature is armed (then it executes the feature).
+  crown mode), unless an armed mode intercepts it (Block line → `executeFeature`,
+  Block Hint → `executeBlockHint`).
 - `doubleClickCell` — the **opposite** of the cursor mode (block→crown,
   crown→block), via idempotent `ensureCrown`/`ensureBlock`.
 - `crownAt` / `blockAt` — explicit place-crown / toggle-block (keyboard, right-click).
 - `executeFeature` — applies `rowColPlan(...).targets` as one transaction, disarms.
-- `showHint` — **places** the hinted crown (`computeHint` → most-constrained
-  crownless region's solution crown), auto-blocks via the normal commit, and sets
-  `flashCell` for a ~900 ms gold flash. If the hint isn't preloaded yet, it
-  requests one and places it on arrival.
+- `executeBlockHint` — Block Hint: `await worker.revealRegion(...)` for the clicked
+  section, then places that crown (auto-block + flash) and disarms; guards a puzzle
+  change mid-await. The two armed modes are mutually exclusive.
+- `showHint` (Random Hint) — **places** the hinted crown (`computeHint` →
+  most-constrained crownless region's solution crown), auto-blocks via the normal
+  commit, and sets `flashCell` for a ~900 ms gold flash. If the hint isn't
+  preloaded yet, it requests one and places it on arrival.
 
 ## ui/ — rendering & input
 
@@ -153,9 +179,11 @@ and toggling auto-block is just a recompute — no orphaned marks, no bookkeepin
   the marks effect diffs `marks` against a cached copy and updates just the
   changed cells; separate effects toggle `cell--conflict`, the feature highlight,
   and the hint flash. No virtual DOM, no `innerHTML` rebuilds.
-  - **Feature highlight**: while the feature is armed and the hovered region
+  - **Feature highlight**: while Block line is armed and the hovered region
     qualifies, it outlines only that region's **still-open (unblocked) cells on
-    the line** that will be blocked — the candidates in the block direction.
+    the line** that will be blocked — the candidates in the block direction. A
+    parallel effect outlines the **whole** hovered region while Block Hint is
+    armed (the section whose crown a click will reveal).
 - **`input.ts`** — pointer/keyboard via delegation. **Single vs double click uses
   the browser's native click count (`event.detail`)**, not a timer: the first
   click acts immediately (so blocking feels instant), and a real double-click
@@ -165,9 +193,9 @@ and toggling auto-block is just a recompute — no orphaned marks, no bookkeepin
   blocks; arrow keys move a roving focus; `Space/Enter`/`X`/`C` act on the focused
   cell.
 - **`controls.ts`** — the ring of small labeled controls: the Crown/Block switch,
-  Auto-block toggle, Undo, Hint, and the **Block line** feature button (steady
-  gold glow when a hovered region qualifies; armed state). Plus the large central
-  New Puzzle button with an inline confirm.
+  Auto-block + Easier toggles, Undo, Random Hint, the **Block Hint** and **Block
+  line** armed-feature buttons (gold glow when a hovered region qualifies; armed
+  state). Plus the large central New Puzzle button with an inline confirm.
 - **`view.ts`** — layout (board centered, controls flanking, stacked ≤960px) and
   global keyboard shortcuts.
 - **`icons.ts`**, **`winOverlay.ts`** — inline SVGs; the "Solved" badge + board glow.
@@ -188,8 +216,10 @@ validity & the adjacency-rule equivalence, region invariants (partition,
 contiguity, one-seed), **uniqueness** (cross-checked against the brute solver),
 RNG determinism, solver propagation vs brute, the hint engine (always a valid
 solution crown), auto-block/conflict/feature predicates, distinct region colors,
-palette contrast, and a generation perf guard. UI/store are verified in-browser
-via the Claude Preview MCP rather than unit tests.
+palette contrast, the **easier-mode** one-line guarantee + determinism (uniqueness
+still cross-checked vs brute), and a generation perf guard (easier attempt counts
+stay at parity with normal). UI/store are verified in-browser via the Claude
+Preview MCP rather than unit tests.
 
 ## Deploy & git
 

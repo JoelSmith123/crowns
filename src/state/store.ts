@@ -41,6 +41,8 @@ export interface GameStore {
   settings: Signal<Settings>;
   hoverRegion: Signal<number | null>;
   rowColArmed: Signal<boolean>;
+  /** Block Hint armed: next click reveals the chosen region's crown. */
+  blockHintArmed: Signal<boolean>;
   hint: Signal<Hint | null>;
   /** Cell to briefly highlight after the Hint button places a crown there. */
   flashCell: Signal<number | null>;
@@ -65,9 +67,12 @@ export interface GameStore {
   toggleCursorMode(): void;
   setAutoBlock(on: boolean): void;
   toggleAutoBlock(): void;
+  setEasierMode(on: boolean): void;
+  toggleEasierMode(): void;
   undo(): void;
   setHover(region: number | null): void;
   toggleRowColArm(): void;
+  toggleBlockHintArm(): void;
   showHint(): void;
   hasProgress(): boolean;
   startNewPuzzle(): Promise<void>;
@@ -81,6 +86,7 @@ export function createStore(worker: WorkerClient): GameStore {
   const settings = signal<Settings>(loadSettings());
   const hoverRegion = signal<number | null>(null);
   const rowColArmed = signal(false);
+  const blockHintArmed = signal(false);
   const hint = signal<Hint | null>(null);
   const flashCell = signal<number | null>(null);
   const canUndo = signal(false);
@@ -91,6 +97,7 @@ export function createStore(worker: WorkerClient): GameStore {
   let hintTimer: ReturnType<typeof setTimeout> | null = null;
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
   let placeHintWhenReady = false;
+  let prefetchToken = 0; // guards against a stale (old-mode) prefetch overwriting a newer one
 
   // --- derived state ---
   const autoX = computed<ReadonlySet<number>>(() => {
@@ -205,6 +212,7 @@ export function createStore(worker: WorkerClient): GameStore {
       flashCell.set(null);
       placeHintWhenReady = false;
       rowColArmed.set(false);
+      blockHintArmed.set(false);
       hoverRegion.set(null);
       status.set('playing');
     });
@@ -213,7 +221,9 @@ export function createStore(worker: WorkerClient): GameStore {
 
   function prefetchNext(): void {
     nextReady.set(false);
-    worker.generate().then((d) => {
+    const token = ++prefetchToken;
+    worker.generate(settings.peek().easierMode).then((d) => {
+      if (token !== prefetchToken) return; // a newer prefetch (e.g. after an easier-mode toggle) superseded this
       nextPuzzle = d;
       nextReady.set(true);
     });
@@ -263,6 +273,21 @@ export function createStore(worker: WorkerClient): GameStore {
     }
   }
 
+  /**
+   * Block Hint: reveal the chosen region's crown. The solution lives only in the
+   * worker, so ask it for this region's crown, then place it (auto-block + flash
+   * via the normal hint path). Guards against the puzzle changing mid-await.
+   */
+  async function executeBlockHint(cell: number): Promise<void> {
+    const p = puzzle.peek();
+    blockHintArmed.set(false);
+    if (!p) return;
+    const pid = p.id;
+    const sol = await worker.revealRegion(pid, p.regionOf[cell]);
+    if (sol == null || puzzle.peek()?.id !== pid) return; // unknown region, or puzzle moved on
+    placeHintCrown(sol);
+  }
+
   return {
     puzzle,
     status,
@@ -271,6 +296,7 @@ export function createStore(worker: WorkerClient): GameStore {
     settings,
     hoverRegion,
     rowColArmed,
+    blockHintArmed,
     hint,
     flashCell,
     canUndo,
@@ -295,6 +321,10 @@ export function createStore(worker: WorkerClient): GameStore {
     },
 
     clickCell(cell) {
+      if (blockHintArmed.peek()) {
+        void executeBlockHint(cell);
+        return;
+      }
       if (rowColArmed.peek()) {
         executeFeature(cell);
         return;
@@ -304,6 +334,10 @@ export function createStore(worker: WorkerClient): GameStore {
     },
 
     doubleClickCell(cell) {
+      if (blockHintArmed.peek()) {
+        void executeBlockHint(cell);
+        return;
+      }
       if (rowColArmed.peek()) {
         executeFeature(cell);
         return;
@@ -338,6 +372,20 @@ export function createStore(worker: WorkerClient): GameStore {
       this.setAutoBlock(!settings.peek().autoBlock);
     },
 
+    setEasierMode(on) {
+      const s = settings.peek();
+      if (s.easierMode === on) return;
+      persistSettings({ ...s, easierMode: on });
+      // Apply to the NEXT generated puzzle: drop the old-mode prefetch and refetch
+      // (the current board is left untouched). The token guard ignores the stale one.
+      nextPuzzle = null;
+      prefetchNext();
+    },
+
+    toggleEasierMode() {
+      this.setEasierMode(!settings.peek().easierMode);
+    },
+
     undo() {
       const tx = history.pop();
       if (!tx) return;
@@ -359,7 +407,13 @@ export function createStore(worker: WorkerClient): GameStore {
     },
 
     toggleRowColArm() {
+      blockHintArmed.set(false); // the two armed modes are mutually exclusive
       rowColArmed.set(!rowColArmed.peek());
+    },
+
+    toggleBlockHintArm() {
+      rowColArmed.set(false); // the two armed modes are mutually exclusive
+      blockHintArmed.set(!blockHintArmed.peek());
     },
 
     showHint() {
@@ -381,7 +435,7 @@ export function createStore(worker: WorkerClient): GameStore {
       status.set('loading');
       let data = nextPuzzle;
       nextPuzzle = null;
-      if (!data) data = await worker.generate();
+      if (!data) data = await worker.generate(settings.peek().easierMode);
       adopt(data);
       prefetchNext();
     },

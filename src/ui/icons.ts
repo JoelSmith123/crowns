@@ -13,3 +13,6 @@ export const hintSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColo
 
 /** The row/column auto-block feature: a line sweeping across with X's. */
 export const featureSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M3 9 H21"/><path d="M5.5 13 l3 3 M8.5 13 l-3 3" stroke-width="1.6"/><path d="M11 13 l3 3 M14 13 l-3 3" stroke-width="1.6"/><path d="M16.5 13 l3 3 M19.5 13 l-3 3" stroke-width="1.6"/></svg>`;
+
+/** Block Hint: reveal a chosen section's crown — a crown inside a region box. */
+export const blockHintSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><g fill="currentColor" stroke="none"><path d="M7 13.5 L9 10 L12 14 L15 10 L17 13.5 Z"/><rect x="7" y="14.6" width="10" height="1.8"/></g></svg>`;

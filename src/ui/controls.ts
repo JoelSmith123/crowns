@@ -5,7 +5,7 @@
  */
 import { effect, signal } from '../state/signal';
 import type { GameStore } from '../state/store';
-import { crownSvg, xSvg, undoSvg, hintSvg, featureSvg } from './icons';
+import { crownSvg, xSvg, undoSvg, hintSvg, featureSvg, blockHintSvg } from './icons';
 
 export interface ControlsView {
   left: HTMLElement;
@@ -80,6 +80,23 @@ export function createControls(store: GameStore): ControlsView {
     }),
   );
 
+  // --- easier-mode toggle (applies to newly generated puzzles) ---
+  const easierToggle = document.createElement('button');
+  easierToggle.type = 'button';
+  easierToggle.className = 'toggle';
+  easierToggle.innerHTML = `<span class="toggle__dot"></span><span class="toggle__label">Easier</span>`;
+  easierToggle.addEventListener('click', () => store.toggleEasierMode());
+  disposers.push(
+    effect(() => {
+      const on = store.settings.get().easierMode;
+      easierToggle.classList.toggle('toggle--on', on);
+      easierToggle.setAttribute('aria-pressed', String(on));
+      easierToggle.title = on
+        ? 'Easier mode is on — new puzzles guarantee line sections'
+        : 'Easier mode is off — new puzzles are unconstrained';
+    }),
+  );
+
   // --- undo ---
   const undoBtn = iconButton('Undo (⌘Z)', undoSvg, 'Undo');
   undoBtn.addEventListener('click', () => store.undo());
@@ -90,9 +107,27 @@ export function createControls(store: GameStore): ControlsView {
     }),
   );
 
-  // --- hint ---
-  const hintBtn = iconButton('Hint', hintSvg, 'Hint');
-  hintBtn.addEventListener('click', () => store.showHint());
+  // --- random hint (places the next correct crown in the most-constrained region) ---
+  const randomHintBtn = iconButton('Random Hint — reveal the next obvious crown', hintSvg, 'Random hint');
+  randomHintBtn.addEventListener('click', () => store.showHint());
+
+  // --- block hint (arm, then click a section to reveal that section's crown) ---
+  const blockHintBtn = iconButton(
+    'Block Hint — then click a section to reveal its crown',
+    blockHintSvg,
+    'Block hint',
+    'ctl--feature',
+  );
+  blockHintBtn.addEventListener('click', () => store.toggleBlockHintArm());
+  disposers.push(
+    effect(() => {
+      const armed = store.blockHintArmed.get();
+      const glow = armed && store.hoverRegion.get() !== null;
+      blockHintBtn.classList.toggle('ctl--armed', armed);
+      blockHintBtn.classList.toggle('ctl--glow', glow);
+      blockHintBtn.setAttribute('aria-pressed', String(armed));
+    }),
+  );
 
   // --- row/column feature ---
   const featureBtn = iconButton('Block the rest of a row/column for a line-confined region', featureSvg, 'Block line', 'ctl--feature');
@@ -107,8 +142,8 @@ export function createControls(store: GameStore): ControlsView {
     }),
   );
 
-  left.append(modeSwitch, autoToggle);
-  right.append(undoBtn, hintBtn, featureBtn);
+  left.append(modeSwitch, autoToggle, easierToggle);
+  right.append(undoBtn, randomHintBtn, blockHintBtn, featureBtn);
 
   // --- new puzzle (large, central) with inline confirm ---
   const newPuzzle = document.createElement('div');

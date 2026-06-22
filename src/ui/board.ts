@@ -137,6 +137,25 @@ export function createBoard(store: GameStore): BoardView {
     }),
   );
 
+  // Block Hint armed: outline the WHOLE hovered region so the player sees the
+  // section whose crown a click will reveal. (Mutually exclusive with the feature
+  // highlight above — only one armed mode is ever active.)
+  let lastBlockHintCells: number[] = [];
+  disposers.push(
+    effect(() => {
+      const armed = store.blockHintArmed.get();
+      const hr = store.hoverRegion.get();
+      for (const i of lastBlockHintCells) cells[i]?.classList.remove('cell--region-hover');
+      lastBlockHintCells = [];
+      if (!armed || hr === null || currentN === 0) return;
+      for (let i = 0; i < cells.length; i++) {
+        if (regionByCell[i] !== hr) continue;
+        cells[i].classList.add('cell--region-hover');
+        lastBlockHintCells.push(i);
+      }
+    }),
+  );
+
   // Brief flash on the crown the Hint button just placed.
   let lastFlash = -1;
   disposers.push(

@@ -51,15 +51,25 @@ app, use the Claude Preview MCP (`.claude/launch.json` defines `crowns-dev` and
 **Gotchas / conventions:**
 - Generation is the hard part — random regions are ~never unique; we carve +
   propagate + perturb (`generator.ts`/`solver.ts`). Don't "simplify" the
-  solver/carve without re-checking uniqueness AND attempt counts.
+  solver/carve without re-checking uniqueness AND attempt counts. Easier mode
+  (`easier.ts`, default on) guarantees the one-line region COUNT BY CONSTRUCTION
+  (never rejection sampling): line-regions grow axis-confined to a varied length
+  (grown FIRST so blobs can't truncate them), never gain off-line cells, and
+  carve PREFERS trimming blobs over line cells so they stay longish. Final length
+  is a quality/perf trade — carve trims some back for uniqueness; fully protecting
+  line cells starves carve, so don't. Re-check attempt counts before raising the
+  target length.
 - Node timing on this machine is inflated ~3-4× by the Claude app's CPU use;
   trust load-independent metrics (attempt counts) over wall-clock ms.
 - Input: single vs double click uses the native `event.detail` count so single
   clicks are instant; double-click does the OPPOSITE of the cursor mode. Do NOT
   reintroduce a click-delay/timer (that was the lag bug).
-- Hint PLACES the next correct crown (with auto-block) + flashes it; it does not
-  just highlight. Auto-block is a DERIVED overlay, so undo only records
-  crowns/manualX.
+- Hints PLACE a correct crown (with auto-block) + flash it; they don't just
+  highlight. "Random Hint" picks the most-constrained region; "Block Hint" arms,
+  then reveals the crown of whatever section you click (worker `REVEAL_REGION`,
+  since the solution stays worker-side). The two armed modes (Block Hint / Block
+  line) are mutually exclusive. Auto-block is a DERIVED overlay, so undo only
+  records crowns/manualX.
 - `tsconfig` uses `verbatimModuleSyntax` — use `import type` for type-only imports.
 - Worker file types `self` via a minimal cast to avoid DOM-vs-WebWorker lib clash.
 
@@ -67,7 +77,7 @@ app, use the Claude Preview MCP (`.claude/launch.json` defines `crowns-dev` and
 Preserve: remote `origin` = github.com/JoelSmith123/crowns (public); **`main` is
 the production branch and Cloudflare Pages auto-deploys every push to it** — so
 ship via branch → PR → merge to `main` (never commit straight to `main`). The
-game is complete and live (crowns-1dw.pages.dev); 20 Vitest tests pass; verify
+game is complete and live (crowns-1dw.pages.dev); 26 Vitest tests pass; verify
 UI changes in-browser (Preview MCP) before merging, and confirm a deploy by
 matching the deployed `assets/index-*.js` hash to local `dist/`. Don't re-tune
 generation perf without reading `docs/architecture.md` + the

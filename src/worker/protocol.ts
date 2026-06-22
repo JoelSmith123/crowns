@@ -15,6 +15,8 @@ import type { Hint } from '../core/types';
 export interface GenerateReq {
   type: 'GENERATE';
   reqId: number;
+  /** Easier mode: guarantee one-line regions + smaller/more-uniform regions. */
+  easier: boolean;
 }
 
 export interface ComputeHintReq {
@@ -26,7 +28,15 @@ export interface ComputeHintReq {
   autoBlock: boolean;
 }
 
-export type Req = GenerateReq | ComputeHintReq;
+/** Block Hint: reveal the solution's crown for one player-chosen region. */
+export interface RevealRegionReq {
+  type: 'REVEAL_REGION';
+  reqId: number;
+  puzzleId: number;
+  region: number;
+}
+
+export type Req = GenerateReq | ComputeHintReq | RevealRegionReq;
 
 // ---- worker -> main -------------------------------------------------------
 
@@ -47,10 +57,17 @@ export interface HintRes {
   hint: Hint | null;
 }
 
+/** The solution's crown cell for the region named in a REVEAL_REGION request. */
+export interface RegionCrownRes {
+  type: 'REGION_CROWN';
+  reqId: number;
+  cell: number | null;
+}
+
 export interface ErrorRes {
   type: 'ERROR';
   reqId: number;
   message: string;
 }
 
-export type Res = GeneratedRes | HintRes | ErrorRes;
+export type Res = GeneratedRes | HintRes | RegionCrownRes | ErrorRes;

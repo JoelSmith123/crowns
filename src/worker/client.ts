@@ -19,6 +19,7 @@ export class WorkerClient {
   private worker: Worker;
   private reqId = 0;
   private genResolvers = new Map<number, (p: PuzzleData) => void>();
+  private regionResolvers = new Map<number, (cell: number | null) => void>();
   private hintHandler: ((puzzleId: number, hint: Hint | null) => void) | null = null;
 
   constructor() {
@@ -26,18 +27,27 @@ export class WorkerClient {
     this.worker.onmessage = (ev: MessageEvent<Res>) => this.onMessage(ev.data);
   }
 
-  /** Generate a fresh, uniquely-solvable puzzle. */
-  generate(): Promise<PuzzleData> {
+  /** Generate a fresh, uniquely-solvable puzzle (easier mode applies its extra guarantees). */
+  generate(easier: boolean): Promise<PuzzleData> {
     const reqId = ++this.reqId;
     return new Promise((resolve) => {
       this.genResolvers.set(reqId, resolve);
-      this.post({ type: 'GENERATE', reqId });
+      this.post({ type: 'GENERATE', reqId, easier });
     });
   }
 
   /** Ask the worker to (re)compute the next hint for the current board. */
   computeHint(puzzleId: number, crowns: number[], manualX: number[], autoBlock: boolean): void {
     this.post({ type: 'COMPUTE_HINT', reqId: ++this.reqId, puzzleId, crowns, manualX, autoBlock });
+  }
+
+  /** Block Hint: resolve the solution's crown cell for one region (null if the puzzle is unknown). */
+  revealRegion(puzzleId: number, region: number): Promise<number | null> {
+    const reqId = ++this.reqId;
+    return new Promise((resolve) => {
+      this.regionResolvers.set(reqId, resolve);
+      this.post({ type: 'REVEAL_REGION', reqId, puzzleId, region });
+    });
   }
 
   /** Register the hint push handler (latest wins). */
@@ -61,6 +71,14 @@ export class WorkerClient {
       }
       case 'HINT': {
         this.hintHandler?.(res.puzzleId, res.hint);
+        break;
+      }
+      case 'REGION_CROWN': {
+        const resolve = this.regionResolvers.get(res.reqId);
+        if (resolve) {
+          this.regionResolvers.delete(res.reqId);
+          resolve(res.cell);
+        }
         break;
       }
       case 'ERROR': {
