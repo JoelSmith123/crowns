@@ -104,16 +104,19 @@ Two reasons this is delicate: (a) random regions are ~0% unique, so you can't
 just "generate and check"; (b) the dev machine's timing is unreliable (see
 Gotchas), so tune against **attempt counts**, not wall-clock.
 
-**Easier mode** (opt-in, default on) layers a *construction-based* guarantee on
-top, so it adds no attempts. `planEasier` picks `threshold(n)` regions (2/3/4 by
-size) to confine to a single row/column; `growRegions(plan)` grows them
-axis-restricted and freezes each at a length-2 domino (a pre-claim pass keeps
-every region ≥ 2 and a cleanup mops up any pocket a strip walls off);
-`carveToUnique(plan)` excludes line-regions as move **targets** only — so a cell
-can still be carved *out* of one, and one-line-ness holds without ever blocking
-carve. One-line regions strongly constrain the solver, so attempt counts stay at
-parity with normal; the `countOneLineRegions` gate in `uniqueness.ts` is
-belt-and-suspenders (passes by construction).
+**Easier mode** (opt-in, default on). The one-line region COUNT is guaranteed by
+construction (never rejection sampling). `planEasier` picks `threshold(n)` regions
+(2/3/4 by size) to confine to a single row/column, each with a varied target
+length. `growRegions(plan)` grows them axis-restricted and FIRST (so blobs can't
+truncate them), with a pre-claim keeping every region ≥ 2 and a **blob-only**
+cleanup that leaves a rare strip-ringed pocket UNASSIGNED (→ regrow in
+`uniqueness.ts`, never a broken line). `carveToUnique(plan)` never moves a cell
+INTO a line-region, and **prefers** trimming blob crowns over line crowns: fully
+protecting line cells starves carve (crown-swap cycles among long strips spike
+attempts), while no preference trims them to dominoes — the preference keeps them
+longish (avg ≈ 3, varied 2–6). Final length is a quality/perf trade (carve trims
+some back for uniqueness, costing a few extra attempts); the `countOneLineRegions`
+gate is belt-and-suspenders.
 
 ## worker/ — the boundary
 

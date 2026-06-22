@@ -119,12 +119,22 @@ export function growRegions(n: number, solution: number[], rng: Rng, plan?: Easi
 
   while (remaining > 0) {
     // Pick a region to grow, weighted toward smaller ones.
+    // Easier mode grows its line-regions to length FIRST (while their lines are
+    // still empty), so blobs can't truncate them; then blobs fill the rest.
+    const linePhase =
+      plan != null &&
+      plan.lineRegions.some((s) => frontiers[s.region].size > 0 && size[s.region] < plan.targetLen[s.region]);
+
     const cands: number[] = [];
     const weights: number[] = [];
     let wsum = 0;
     for (let g = 0; g < n; g++) {
       if (frontiers[g].size === 0) continue;
-      if (plan && plan.isLineRegion[g]) continue; // line-regions stay frozen at their pre-claimed segment
+      if (plan && plan.isLineRegion[g]) {
+        if (size[g] >= plan.targetLen[g]) continue; // reached its length → freeze
+      } else if (linePhase) {
+        continue; // hold blobs back until the line-regions reach their length
+      }
       const w = 1 / Math.pow(size[g], alpha);
       cands.push(g);
       weights.push(w);
@@ -173,33 +183,25 @@ export function growRegions(n: number, solution: number[], rng: Rng, plan?: Easi
     }
   }
 
-  // Easier mode only: a line-region grows along its line, so a thin strip can
+  // Easier mode only: a line-region grows along its line, so a strip can
   // occasionally wall off a pocket the blob frontiers never reach. Mop up any
-  // such leftover cells into a neighbor — PREFER a non-line (blob) region so the
-  // line-regions stay one-line; the one-line gate in uniqueness.ts catches the
-  // (rare) case a cell is fully ringed by line cells and regrows. Iterates so a
-  // pocket fills inward once its rim is assigned; terminates (board is connected).
+  // such leftover cells into an adjacent BLOB region only (never a line-region, so
+  // the one-line guarantee is preserved exactly). A cell fully ringed by line
+  // cells is left UNASSIGNED and uniqueness.ts regrows (rare). Iterates so a pocket
+  // fills inward once its rim is assigned; terminates (assignments are monotonic).
   if (plan) {
     let changed = true;
     while (changed) {
       changed = false;
       for (let i = 0; i < total; i++) {
         if (regionOf[i] !== UNASSIGNED) continue;
-        let blob = -1;
-        let any = -1;
         for (const nb of neighbors4(i, n)) {
           const g = regionOf[nb];
-          if (g === UNASSIGNED) continue;
-          if (!plan.isLineRegion[g]) {
-            blob = g;
+          if (g !== UNASSIGNED && !plan.isLineRegion[g]) {
+            regionOf[i] = g;
+            changed = true;
             break;
           }
-          if (any === -1) any = g;
-        }
-        const g = blob !== -1 ? blob : any;
-        if (g !== -1) {
-          regionOf[i] = g;
-          changed = true;
         }
       }
     }
@@ -240,16 +242,23 @@ function regionStaysHealthyWithout(regionOf: Uint8Array, n: number, cell: number
 /**
  * Try to invalidate alternate solution q by moving one of its crowns.
  *
- * Easier mode: a cell may be moved OUT of a line-region (removal keeps the region
- * on its row/column, so it stays one-line; contiguity/size are guarded below),
- * but never INTO a line-region (that would add an off-line cell). So line-regions
- * are excluded as move targets only — this is what lets carve still eliminate an
- * alternate that merely shifts a line-region's crown within its own line.
+ * Easier mode: never move a cell INTO a line-region (would add an off-line cell),
+ * and PREFER moving a blob crown over a line-region crown — so line-regions keep
+ * most of their grown length, while carve can still fall back to a line cell when
+ * an alternate's only movable crowns are line cells (crown-swap cycles among
+ * long line-regions, which are common — full protection starves carve).
  */
 function tryCarveAlternate(n: number, regionOf: Uint8Array, p: number[], q: number[], rng: Rng, plan?: EasierPlan): boolean {
-  const diffRows: number[] = [];
-  for (let r = 0; r < n; r++) if (q[r] !== p[r]) diffRows.push(r);
-  shuffle(diffRows, rng);
+  const blobRows: number[] = [];
+  const lineRows: number[] = [];
+  for (let r = 0; r < n; r++) {
+    if (q[r] === p[r]) continue;
+    if (plan && plan.isLineRegion[regionOf[r * n + q[r]]]) lineRows.push(r);
+    else blobRows.push(r);
+  }
+  shuffle(blobRows, rng);
+  shuffle(lineRows, rng);
+  const diffRows = lineRows.length ? blobRows.concat(lineRows) : blobRows; // blob crowns first
   for (const r of diffRows) {
     const a = r * n + q[r]; // a q-crown that is not a p-crown
     const gA = regionOf[a];
@@ -276,21 +285,27 @@ function tryCarveAlternate(n: number, regionOf: Uint8Array, p: number[], q: numb
 function perturbCell(regionOf: Uint8Array, n: number, pCrowns: Set<number>, rng: Rng, plan?: EasierPlan): boolean {
   const total = n * n;
   const start = Math.floor(rng() * total);
-  for (let off = 0; off < total; off++) {
-    const c = (start + off) % total;
-    if (pCrowns.has(c)) continue; // never move a solution crown
-    const gC = regionOf[c];
-    const targets: number[] = [];
-    for (const nb of neighbors4(c, n)) {
-      const gB = regionOf[nb];
-      if (gB === gC) continue;
-      if (plan && plan.isLineRegion[gB]) continue; // never move a cell INTO a line-region
-      if (!targets.includes(gB)) targets.push(gB);
+  // Pass 0 spares line cells (keeps their length); pass 1 allows them as a fallback
+  // so perturbation never starves. Non-easier runs a single pass (original behavior).
+  for (let pass = 0; pass < 2; pass++) {
+    for (let off = 0; off < total; off++) {
+      const c = (start + off) % total;
+      if (pCrowns.has(c)) continue; // never move a solution crown
+      const gC = regionOf[c];
+      if (plan && pass === 0 && plan.isLineRegion[gC]) continue; // pass 0: blob cells only
+      const targets: number[] = [];
+      for (const nb of neighbors4(c, n)) {
+        const gB = regionOf[nb];
+        if (gB === gC) continue;
+        if (plan && plan.isLineRegion[gB]) continue; // never move a cell INTO a line-region
+        if (!targets.includes(gB)) targets.push(gB);
+      }
+      if (targets.length === 0) continue;
+      if (!regionStaysHealthyWithout(regionOf, n, c)) continue;
+      regionOf[c] = targets[Math.floor(rng() * targets.length)];
+      return true;
     }
-    if (targets.length === 0) continue;
-    if (!regionStaysHealthyWithout(regionOf, n, c)) continue;
-    regionOf[c] = targets[Math.floor(rng() * targets.length)];
-    return true;
+    if (!plan) break; // non-easier: single pass (identical to original)
   }
   return false;
 }

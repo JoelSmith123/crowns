@@ -16,7 +16,7 @@
  * line-region (so the property is preserved without ever blocking a carve).
  */
 import type { Rng } from './rng';
-import { range, shuffle } from './rng';
+import { range, shuffle, randInt } from './rng';
 
 export type LineAxis = 'row' | 'col';
 
@@ -34,6 +34,7 @@ export interface EasierPlan {
   isLineRegion: Uint8Array; // [n] 1 if region is a line-region
   lineAxisOf: Int8Array; // [n] 0=row, 1=col, -1=none
   lineIndexOf: Int16Array; // [n] confined line index, -1 if none
+  targetLen: Int16Array; // [n] desired length a line-region grows to along its line (varied; 0 for non-line)
   alpha: number; // region-size balance weight (higher → smaller, more uniform regions)
   maxCap: number; // size gate cap (kept at the default; "smaller" comes from alpha, not a tighter cap)
 }
@@ -95,8 +96,13 @@ export function planEasier(n: number, p: number[], rng: Rng): EasierPlan {
   const isLineRegion = new Uint8Array(n);
   const lineAxisOf = new Int8Array(n).fill(-1);
   const lineIndexOf = new Int16Array(n).fill(-1);
+  const targetLen = new Int16Array(n);
   const lineRegions: LineRegionSpec[] = [];
   const claimed = new Set<number>(); // preclaim cells already taken (avoids row×col crossing collisions)
+
+  // Varied line-region lengths, biased long (carve trims some back toward 2, so we
+  // aim high). Scaled with board size so big boards get the longest strips.
+  const maxLen = Math.min(6, Math.max(5, Math.floor(n / 2)));
 
   const order = shuffle(range(n), rng); // region pick order → varied placement
   for (const r of order) {
@@ -117,6 +123,7 @@ export function planEasier(n: number, p: number[], rng: Rng): EasierPlan {
     isLineRegion[r] = 1;
     lineAxisOf[r] = choice.axis === 'row' ? 0 : 1;
     lineIndexOf[r] = choice.line;
+    targetLen[r] = randInt(rng, 3, maxLen); // [3..maxLen]; growth may fall short if the line fills up
     lineRegions.push({ region: r, axis: choice.axis, line: choice.line, preclaim: choice.cell });
   }
 
@@ -125,6 +132,7 @@ export function planEasier(n: number, p: number[], rng: Rng): EasierPlan {
     isLineRegion,
     lineAxisOf,
     lineIndexOf,
+    targetLen,
     alpha: 2.0, // > the default 1.6: tighter size balance → smaller, more uniform regions
     maxCap: Math.floor(n * 2.2) + 1, // default cap; do NOT tighten (would become rejection sampling)
   };

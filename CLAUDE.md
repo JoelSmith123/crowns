@@ -52,9 +52,13 @@ app, use the Claude Preview MCP (`.claude/launch.json` defines `crowns-dev` and
 - Generation is the hard part — random regions are ~never unique; we carve +
   propagate + perturb (`generator.ts`/`solver.ts`). Don't "simplify" the
   solver/carve without re-checking uniqueness AND attempt counts. Easier mode
-  (`easier.ts`, default on) guarantees N one-line regions BY CONSTRUCTION
-  (axis-confined growth, line-regions frozen at a domino, carve excludes them as
-  move TARGETS only) — never by rejection sampling, so attempt counts stay flat.
+  (`easier.ts`, default on) guarantees the one-line region COUNT BY CONSTRUCTION
+  (never rejection sampling): line-regions grow axis-confined to a varied length
+  (grown FIRST so blobs can't truncate them), never gain off-line cells, and
+  carve PREFERS trimming blobs over line cells so they stay longish. Final length
+  is a quality/perf trade — carve trims some back for uniqueness; fully protecting
+  line cells starves carve, so don't. Re-check attempt counts before raising the
+  target length.
 - Node timing on this machine is inflated ~3-4× by the Claude app's CPU use;
   trust load-independent metrics (attempt counts) over wall-clock ms.
 - Input: single vs double click uses the native `event.detail` count so single

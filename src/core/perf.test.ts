@@ -77,9 +77,12 @@ describe('easier-mode generation (8..15)', () => {
         `normal attempts — p50=${median(normalAttempts)} p90=${pct(normalAttempts, 0.9)} | ` +
         `easier ms p50=${easierTimes[Math.floor(RUNS * 0.5)].toFixed(1)}`,
     );
-    // Construction-based: median attempts at parity with normal, tail bounded (no
-    // rejection-sampling blow-up — a regression there spiked p90 past 100).
-    expect(median(easierAttempts)).toBeLessThanOrEqual(median(normalAttempts) + 2);
-    expect(pct(easierAttempts, 0.9)).toBeLessThan(40);
+    // The one-line COUNT guarantee is construction-based (zero compromise). Growing
+    // line-regions LONG (a quality goal) costs some carve work, so the median is a
+    // few attempts above normal and the tail is higher — but both stay bounded, far
+    // below a starvation/rejection regression (fully protecting line-regions spiked
+    // p50 past 20 and p90 past 400).
+    expect(median(easierAttempts)).toBeLessThan(12);
+    expect(pct(easierAttempts, 0.9)).toBeLessThan(80);
   }, 120_000);
 });

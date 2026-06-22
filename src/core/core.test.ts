@@ -359,7 +359,9 @@ describe('easier mode', () => {
     }
   });
 
-  it('growRegions(plan) partitions the board, every region >= 2, planned regions truly one-line', () => {
+  it('growRegions(plan) keeps planned regions one-line within target; complete maps partition cleanly', () => {
+    let completeMaps = 0;
+    const RUNS = 8 * 12;
     for (let n = 8; n <= 15; n++) {
       for (let s = 0; s < 12; s++) {
         const rng = mulberry32(n * 53 + s);
@@ -367,27 +369,36 @@ describe('easier mode', () => {
         const plan = planEasier(n, sol, rng);
         const regionOf = growRegions(n, sol, rng, plan);
 
-        for (let i = 0; i < n * n; i++) {
-          expect(regionOf[i]).toBeGreaterThanOrEqual(0);
-          expect(regionOf[i]).toBeLessThan(n);
-        }
-        const sizes = regionSizes(regionOf, n);
-        expect(sizes.reduce((a, b) => a + b, 0)).toBe(n * n);
-        for (let g = 0; g < n; g++) {
-          expect(sizes[g]).toBeGreaterThanOrEqual(2); // pre-claim guarantee
-          expect(regionContiguous(regionOf, n, g, sizes[g])).toBe(true);
-        }
-        // each planned line-region is confined to its line
+        // ALWAYS true: each planned line-region is confined to its line and its
+        // length is in [2, targetLen] (pre-claim floor, freeze ceiling).
         for (const spec of plan.lineRegions) {
+          let len = 0;
           for (let i = 0; i < n * n; i++) {
             if (regionOf[i] !== spec.region) continue;
+            len++;
             if (spec.axis === 'row') expect((i / n) | 0).toBe(spec.line);
             else expect(i % n).toBe(spec.line);
           }
+          expect(len).toBeGreaterThanOrEqual(2);
+          expect(len).toBeLessThanOrEqual(plan.targetLen[spec.region]);
+        }
+
+        // A long strip can rarely ring a pocket → some cells UNASSIGNED; that map
+        // is regrown by uniqueness.ts. When a map IS complete, it must be a valid
+        // partition with every region >= 2 and the one-line guarantee met.
+        if (![...regionOf].every((g) => g < n)) continue;
+        completeMaps++;
+        const sizes = regionSizes(regionOf, n);
+        expect(sizes.reduce((a, b) => a + b, 0)).toBe(n * n);
+        for (let g = 0; g < n; g++) {
+          expect(sizes[g]).toBeGreaterThanOrEqual(2);
+          expect(regionContiguous(regionOf, n, g, sizes[g])).toBe(true);
         }
         expect(oneLineCountIndependent(regionOf, n)).toBeGreaterThanOrEqual(lineRegionThreshold(n));
       }
     }
+    // Incompleteness must be RARE — the vast majority of single grows are usable.
+    expect(completeMaps).toBeGreaterThan(RUNS * 0.8);
   });
 
   it('generateUniquePuzzle(easier) is uniquely solvable AND meets the one-line guarantee for N=8..15', () => {

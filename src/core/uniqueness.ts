@@ -28,6 +28,12 @@ export interface GenOptions {
   onStats?: (stats: { growAttempts: number }) => void;
 }
 
+/** True if every cell has a valid region id (no UNASSIGNED leftover from growth). */
+function isComplete(regionOf: ArrayLike<number>, n: number): boolean {
+  for (let i = 0; i < regionOf.length; i++) if (regionOf[i] >= n) return false;
+  return true;
+}
+
 /**
  * Generate a puzzle with a guaranteed unique solution.
  *
@@ -54,6 +60,9 @@ export function generateUniquePuzzle(rng: Rng, id: number, opts: GenOptions = {}
       // attempt counts flat. Undefined → normal generation.
       const plan = opts.easier ? planEasier(n, solution, rng) : undefined;
       const regionOf = growRegions(n, solution, rng, plan);
+      // Easier mode: a line strip can (rarely) ring a pocket the blob fill can't
+      // reach, leaving cells unassigned. Regrow rather than break a line-region.
+      if (plan && !isComplete(regionOf, n)) continue;
       if (!carveToUnique(n, regionOf, solution, rng, plan)) continue; // stalled → regrow
       if (!passesQualityGates(regionOf, n, plan?.maxCap)) continue; // carving distorted sizes → regrow
       // Belt-and-suspenders: holds by construction (axis-restricted growth + carve
