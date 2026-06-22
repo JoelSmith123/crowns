@@ -24,16 +24,16 @@ function cellRegion(target: EventTarget | null): number | null {
 }
 
 export function attachBoardInput(board: HTMLElement, store: GameStore): () => void {
-  // Tracks whether the previous click executed the armed row/column feature, so
-  // a trailing second click doesn't undo it.
+  // Tracks whether the previous click executed an armed action (the block-line
+  // feature or a block-hint reveal), so a trailing second click doesn't undo it.
   let lastWasFeature = false;
 
   function onClick(e: MouseEvent): void {
     const cell = cellIndex(e.target);
     if (cell < 0) return;
 
-    if (store.rowColArmed.peek()) {
-      store.clickCell(cell); // execute the feature on this region
+    if (store.rowColArmed.peek() || store.blockHintArmed.peek()) {
+      store.clickCell(cell); // execute the armed action on this region
       lastWasFeature = true;
       return;
     }

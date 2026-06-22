@@ -9,7 +9,7 @@
  */
 import type { Req, Res } from './protocol';
 import { generateUniquePuzzle } from '../core/uniqueness';
-import { computeHint } from '../core/hint';
+import { computeHint, solutionCrownForRegion } from '../core/hint';
 import { mulberry32, randomSeed } from '../core/rng';
 import type { Rng } from '../core/rng';
 
@@ -32,7 +32,7 @@ const MAX_KEPT = 6;
 function handle(req: Req): void {
   switch (req.type) {
     case 'GENERATE': {
-      const puz = generateUniquePuzzle(rng, nextId++);
+      const puz = generateUniquePuzzle(rng, nextId++, { easier: req.easier });
       puzzles.set(puz.id, { n: puz.n, regionOf: puz.regionOf, solution: puz.solution });
       if (puzzles.size > MAX_KEPT) {
         const oldest = puzzles.keys().next().value;
@@ -58,6 +58,12 @@ function handle(req: Req): void {
           )
         : null;
       ctx.postMessage({ type: 'HINT', reqId: req.reqId, puzzleId: req.puzzleId, hint });
+      break;
+    }
+    case 'REVEAL_REGION': {
+      const puz = puzzles.get(req.puzzleId);
+      const c = puz ? solutionCrownForRegion(puz.n, puz.regionOf, puz.solution, req.region) : -1;
+      ctx.postMessage({ type: 'REGION_CROWN', reqId: req.reqId, cell: c >= 0 ? c : null });
       break;
     }
   }
